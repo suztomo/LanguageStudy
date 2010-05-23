@@ -1,0 +1,2 @@
+def upnp := ~.net.suztomo.at.upnp.upnp;
+upnp.enableUPnPDiscover("Printer");
