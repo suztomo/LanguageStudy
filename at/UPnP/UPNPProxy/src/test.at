@@ -1,2 +1,14 @@
-def upnp := ~.net.suztomo.at.upnp.upnp;
-upnp.enableUPnPDiscover("Printer");
+/* def upnp := */
+
+/*
+def k := "fugafuga";
+def a := actor:{
+  def l := k;
+  def getL() { l };
+}
+*/
+
+
+
+import ~.net.suztomo.at.upnp.upnp;
+enableUPnPDiscover("Printer");

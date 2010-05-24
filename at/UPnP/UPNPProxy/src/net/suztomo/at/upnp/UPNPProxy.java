@@ -11,15 +11,15 @@ public class UPNPProxy {
 	}
 	
 	public void setupProxyActor(Object o) {
-		System.out.println(o);
+		System.out.println("Setting up " + o);
 	}
 	
 	public interface ATUPNPProxy {
-		public void setupService(String serviceName);
+		public void setupProxyActor(String serviceName);
 	}
 	
 	public void discover(String serviceName, ATUPNPProxy o) {
 		serviceName_ = serviceName;
-		o.setupService(serviceName_);
+		o.setupProxyActor(serviceName_);
 	}
 }

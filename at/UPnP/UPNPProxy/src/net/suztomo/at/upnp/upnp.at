@@ -1,0 +1,107 @@
+import /.at.lang.futures;
+enableFutures(true);
+def UPnPProxy := jlobby.net.suztomo.at.upnp.UPNPProxy;
+def proxy := UPnPProxy.new();
+
+/*
+  AmbientTalk UPnP library.
+
+  This library is sample program where
+  AmbientTalk tries to communicate with UPnP devices.
+  The library doesn't intent to implement entire specification.
+
+  Usage:
+
+  whenUPnP: Printer discovered: {|printer|
+    p<-m1();
+    when: p<-m2() becomes: {|resolvedValue|
+      println(resolvedValue);
+    }
+  }
+
+*/
+
+
+/*
+ Creates a Proxy Actor for a service.
+ When upnpProxy finds a server it
+   1. creates a proxy actor for the service,
+   2. setups the actor methods according to the "description" of the service, and
+   3. exports the actor as the Service
+ The method innvocation on this proxy actor will
+ be tlanslated to Java.
+*/
+
+deftype UPnPService;
+
+
+def UPnPModule := object: {
+    def setupProxyActor(serviceName) {
+        /* 1. creates actor */
+        def sn := serviceName;
+        def s := actor:{
+            def serviceName := sn;
+            def getServiceName() { serviceName };
+            def p(a) {system.println(a)};
+
+            def a := reflectOnActor();
+            a.becomeMirroredBy: (extend: a with: {
+                        def createMessage(sel, args, types) {
+                            p("Creating Message");
+                            system.println("  sel: " + sel);
+                            super^createMessage(sel, args, types);
+                        };
+                        def invoke(slf, invocation) {
+                            system.println("self : " + slf);
+                            system.println("invo : " + invocation);
+                            super^invoke(self, invocation);
+                        };
+                        def send(a,b) {
+                            p("Sending:");
+                            p("  1: " + a);
+                            p("  2: " + b);
+                            super^send(a,b);
+                        };
+                        def receive(receiver, msg) {
+                            system.println("Received:");
+                            p("  1: " + receiver);
+                            p("  2: " + msg);
+                            super^receive(receiver, msg);
+                        }
+                });
+
+        };
+
+        /* 2. setups the actor */
+        proxy.setupProxyActor(s);
+
+        when: (s<-getServiceName()) becomes: { |sname|
+                system.println("async result: " + sname);
+        }
+
+        /* 3. export the actor as the service */
+        //        export: s as: serviceName;
+    };
+
+    /*
+      @serivceName : Service Name to discover. If null, all service will be discovered.
+    */
+    def enableUPnPDiscover(serviceName) {
+      proxy.discover(serviceName, self);
+    };
+
+    /*
+      serviceType : 
+     */
+    def whenUPnP: serviceName discovered: resolvedBlock {
+        enableUPnPDiscover();
+        when: UPnPService discovered: { |proxyActor|
+            when: (proxyActor<-getServiceName()) becomes: {|discoveredName|
+                if: (serviceName == discoveredName) then: {
+                    resolvedBlock(discoveredName);
+                }
+            }
+        }
+    };
+
+}
