@@ -1,6 +1,6 @@
 import /.at.lang.futures;
-enableFutures(true);
-def UPnPProxy := jlobby.net.suztomo.at.upnp.UPNPProxy;
+def UPnPProxy := jlobby.net.suztomo.at.upnp.UPnPProxy;
+
 def proxy := UPnPProxy.new();
 
 /*
@@ -31,18 +31,27 @@ def proxy := UPnPProxy.new();
  The method innvocation on this proxy actor will
  be tlanslated to Java.
 */
+network.online();
 
 deftype UPnPService;
 
 
 def UPnPModule := object: {
-    def setupProxyActor(serviceName) {
+    def createAndExportProxyActor(serviceName, descriptionURL) {
         /* 1. creates actor */
         def sn := serviceName;
-        def s := actor:{
+        def descURL := descriptionURL;
+        def s := actor:{|sn, proxy, descURL|
             def serviceName := sn;
+                        deftype UPnPService;
+                        def UPnPServiceClass := jlobby.net.suztomo.at.upnp.UPnPService;
+                        def service := UPnPServiceClass.new(sn, descURL);
             def getServiceName() { serviceName };
+            def sendUPnPMessage(message, @args) {
+                service.sendMessage(message, @args);
+            };
             def p(a) {system.println(a)};
+
 
             def a := reflectOnActor();
             a.becomeMirroredBy: (extend: a with: {
@@ -69,24 +78,20 @@ def UPnPModule := object: {
                             super^receive(receiver, msg);
                         }
                 });
-
-        };
-
-        /* 2. setups the actor */
-        proxy.setupProxyActor(s);
-
-        when: (s<-getServiceName()) becomes: { |sname|
-                system.println("async result: " + sname);
-        }
-
-        /* 3. export the actor as the service */
-        //        export: s as: serviceName;
+            /* 2. setups the actor */
+                        /*
+            proxy<-configureProxyActor(self);
+                        system.println("exporting");
+                        */
+            /* 3. export the actor as the service */
+            export: self as: UPnPService;
+        }; // actor creation
     };
 
     /*
       @serivceName : Service Name to discover. If null, all service will be discovered.
     */
-    def enableUPnPDiscover(serviceName) {
+    def enableUPnPDiscover(serviceName := "Printer") {
       proxy.discover(serviceName, self);
     };
 
@@ -94,11 +99,13 @@ def UPnPModule := object: {
       serviceType : 
      */
     def whenUPnP: serviceName discovered: resolvedBlock {
-        enableUPnPDiscover();
+        enableFutures(true);
+        enableUPnPDiscover(serviceName);
         when: UPnPService discovered: { |proxyActor|
+                system.println("proxyActor found");
             when: (proxyActor<-getServiceName()) becomes: {|discoveredName|
                 if: (serviceName == discoveredName) then: {
-                    resolvedBlock(discoveredName);
+                    resolvedBlock(proxyActor);
                 }
             }
         }
