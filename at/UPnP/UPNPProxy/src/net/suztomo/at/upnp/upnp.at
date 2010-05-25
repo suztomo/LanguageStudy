@@ -1,7 +1,15 @@
 import /.at.lang.futures;
-def UPnPProxy := jlobby.net.suztomo.at.upnp.UPnPProxy;
 
-def proxy := UPnPProxy.new();
+/*
+  Set your class path appropriately.
+  e.g.
+    export CLASSPATH=$CLASSPATH:../bin
+ */
+def UPnPProxy := jlobby.net.suztomo.at.upnp.ATUPnPProxy;
+
+def ALL_SERVICE_KEYWORD := "_all_";
+def proxy := UPnPProxy.new(ALL_SERVICE_KEYWORD);
+system.println(proxy);
 
 /*
   AmbientTalk UPnP library.
@@ -37,24 +45,35 @@ deftype UPnPService;
 
 
 def UPnPModule := object: {
-    def createAndExportProxyActor(serviceName, descriptionURL) {
+
+    def ANY_UPNP_SERVICE := ALL_SERVICE_KEYWORD;
+
+    def createAndExportProxyActor(serviceName, serviceArgs) {
         /* 1. creates actor */
         def sn := serviceName;
-        def descURL := descriptionURL;
-        def s := actor:{|sn, proxy, descURL|
+        def descURL := serviceArgs;
+        def sargs := serviceArgs;
+        def args := isolate: {|sargs|
+                              def getContents() {sargs};
+        };
+        def s := actor:{|sn, args|
             def serviceName := sn;
                         deftype UPnPService;
-                        def UPnPServiceClass := jlobby.net.suztomo.at.upnp.UPnPService;
-                        def service := UPnPServiceClass.new(sn, descURL);
-            def getServiceName() { serviceName };
+                        def UPnPServiceClass := jlobby.net.suztomo.at.upnp.ATUPnPService;
+                        def service := UPnPServiceClass.new(sn, args.getContents());
+                        def getServiceType() { service.getServiceType() };
             def sendUPnPMessage(message, @args) {
                 service.sendMessage(message, @args);
             };
+                        def getActionNames() {
+                            service.getActionNames();
+                        };
             def p(a) {system.println(a)};
 
 
             def a := reflectOnActor();
             a.becomeMirroredBy: (extend: a with: {
+                    /*
                         def createMessage(sel, args, types) {
                             p("Creating Message");
                             system.println("  sel: " + sel);
@@ -77,6 +96,7 @@ def UPnPModule := object: {
                             p("  2: " + msg);
                             super^receive(receiver, msg);
                         }
+*/
                 });
             /* 2. setups the actor */
                         /*
@@ -102,13 +122,31 @@ def UPnPModule := object: {
         enableFutures(true);
         enableUPnPDiscover(serviceName);
         when: UPnPService discovered: { |proxyActor|
-                system.println("proxyActor found");
-            when: (proxyActor<-getServiceName()) becomes: {|discoveredName|
-                if: (serviceName == discoveredName) then: {
-                    resolvedBlock(proxyActor);
-                }
-            }
+                if: (serviceName != ANY_UPNP_SERVICE) then: {
+                        when: (proxyActor<-getServiceType()) becomes: {|discoveredType|
+                                                                  if: (serviceName == discoveredType) then: {
+                                                                          resolvedBlock(proxyActor);
+                                                                      }
+                        }
+                    } else: { resolvedBlock(proxyActor) };
         }
     };
+    
+    def wheneverUPnP: serviceName discovered: resolvedBlock {
+        enableFutures(true);
+        enableUPnPDiscover(serviceName);
+        whenever: UPnPService discovered: { |proxyActor|
+                if: (serviceName != ANY_UPNP_SERVICE) then: {
+                        when: (proxyActor<-getServiceType()) becomes: {|discoveredType|
+                                                                  if: (serviceName == discoveredType) then: {
+                                                                          resolvedBlock(proxyActor);
+                                                                      }
+                        }
+                    } else: {
+                    resolvedBlock(proxyActor);
+                }
+        }
+    };
+
 
 }
