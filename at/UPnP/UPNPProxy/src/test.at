@@ -1,14 +1,16 @@
 import ~.net.suztomo.at.upnp.upnp;
+import ~.net.suztomo.at.upnp.envelope;
 
 import /.at.lang.futures;
 
-def letter := envelope: [];
+def letter := envelope: ["suzuki", "tomohiro"];
+
 whenUPnP: "urn:schemas-upnp-org:service:Layer3Forwarding:1" discovered: {|p|
-    /* send with empty envelope */
     when: (p<-sendUPnPMessage("GetDefaultConnectionService", letter))
     becomes: {|responseEnvelope|
         if: (nil == responseEnvelope.error()) then: {
-            system.println("async result returned! " + responseEnvelope.getValue() );
+            def r := responseEnvelope.getValue("NewDefaultConnectionService");
+            system.println("async result returned! " + r );
         } else: {
             system.println("error... : " + responseEnvelope.error());
         }

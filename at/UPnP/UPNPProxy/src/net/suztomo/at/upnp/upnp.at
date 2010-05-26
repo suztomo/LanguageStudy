@@ -44,10 +44,6 @@ network.online();
 
 deftype UPnPService;
 
-/*
-  Envelope: key value pair for communicating with UPnP services
-*/
-deftype UPnPEnvelope;
 
 /*
   Error;
@@ -55,57 +51,7 @@ deftype UPnPEnvelope;
 deftype UPnPError;
 
 def UPnPModule := object: {
-    def envelope: defaultTable {
-        def e := object: {
-            def t := defaultTable;
-            def init() {
-            };
-            def setValue(key, value) {
-                t := t + [key, value]
-            };
-            def getValueFrom(key, index) {
-                if: (index > t.length)
-                then: {nil}
-                else: {
-                    if: (t[index] == key)
-                    then: { t[index + 1] }
-                    else: { getValueFrom(key, index + 2) }
-                };
-            };
-            def getValue(key) {
-                getValueFrom(key, 1);
-            };
-            def getTable() {
-                t
-            };
-            def error() {
-                getValue("__error__");
-            }
-        } taggedAs: [UPnPEnvelope];
-        extendIsolate: e with: {};
-    };
-    /* envelope simple test */
-    def e := envelope: ["default", 123];
-    if: (nil != e.getValue("a")) then: {
-        system.println("envelope error 1");
-        system.println(e.getValue("a"));
-    };
-    if: ("default" == e.getValue("default")) then: {
-        system.println("envelope error 1.1");
-        system.println(e.getValue("default"));
-    };
-    e.setValue("a", 3);
-    e.setValue("tomo", "string");
-    if: (3 != e.getValue("a")) then: {
-        system.println("envelope error 2");
-        system.println(e.getValue("a"));
-    };
-    if: ("string" != e.getValue("tomo")) then: {
-        system.println("envelope error 3");
-        system.println(e.getValue("tomo"));
-    };
-
-
+    def UPnPError := UPnPError;
     def ANY_UPNP_SERVICE := ALL_SERVICE_KEYWORD;
     def createAndExportProxyActor(serviceName, serviceArgs) {
         /* 1. creates actor */
@@ -118,13 +64,18 @@ def UPnPModule := object: {
         def s := actor:{|sn, args|
             def serviceName := sn;
             deftype UPnPService;
+            import ~.net.suztomo.at.upnp.envelope;
             def UPnPServiceClass := jlobby.net.suztomo.at.upnp.ATUPnPService;
             def service := UPnPServiceClass.new(sn, args.getContents());
             def getServiceType() { service.getServiceType() };
-            def sendUPnPMessage(message, envelope) {
-                if: (is: envelope taggedAs: UPnPEnvelope)
-                then: { service.sendMessage(message, envelope) }
-                else: { envelope: ["__error__", "Arguments is not envelope"]}
+
+            def sendUPnPMessage(message, envl) {
+                
+                if: ((is: envl taggedAs: UPnPEnvelope).and: {
+                    is: envl taggedAs: /.at.types.Isolate})
+                then: {
+                    service.sendMessage(message, envl)
+                } else: { envelope: ["__error__", "Arguments is not envelope"]}
             };
             def getActionNames() {
                 service.getActionNames();

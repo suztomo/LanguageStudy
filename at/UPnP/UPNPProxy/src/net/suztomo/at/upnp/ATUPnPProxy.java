@@ -4,7 +4,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import net.sbbi.upnp.Discovery;
+import net.sbbi.upnp.DiscoveryListener;
 import net.sbbi.upnp.devices.UPNPRootDevice;
 import net.sbbi.upnp.messages.ActionMessage;
 import net.sbbi.upnp.messages.ActionResponse;
@@ -15,6 +19,8 @@ import net.sbbi.upnp.services.UPNPService;
 
 
 public class ATUPnPProxy {
+	private final static Log log = LogFactory.getLog( DiscoveryListener.class );
+
 	private String allServiceKeyword_; 
 	
 	public ATUPnPProxy(String allServiceKeyword) {
@@ -34,6 +40,7 @@ public class ATUPnPProxy {
 	 */
 	@SuppressWarnings("unchecked")
 	public void discover(String serviceName, ATProxy atproxy) {
+		log.debug("Hello, Logging");
 		if (serviceName == null) {
 			System.out.println("No service Name provided.");
 		} else {
@@ -42,6 +49,7 @@ public class ATUPnPProxy {
 			 */
 			UPNPRootDevice[] devices;
 			try {
+				System.out.println("searching devices...");
 				devices = Discovery.discover("upnp:rootdevice");
 			} catch (IOException e) {
 				return;
@@ -53,8 +61,10 @@ public class ATUPnPProxy {
 					Iterator iter = services.iterator();
 					while(iter.hasNext()) {
 						UPNPService service = (UPNPService)iter.next();
-						String serviceType = service.getServiceType(); 
+						String serviceType = service.getServiceType();
+						System.out.println("found :" + serviceType);
 						if (!allServiceKeyword_.equals(serviceName) && !serviceType.equals(serviceName)) {
+							System.out.println("skip this service: " + serviceType);
 							continue;
 						}
 						
@@ -72,7 +82,7 @@ public class ATUPnPProxy {
 					//UPNPService s = new UPNPService(null, , d)
 				}
 			} else {
-				System.out.println("Found no devices..");
+				System.out.println("Found no devices...");
 			}
 			
 			

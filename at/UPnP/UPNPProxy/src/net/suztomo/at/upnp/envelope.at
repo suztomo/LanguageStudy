@@ -1,0 +1,68 @@
+/*
+  UPnP Envelope Module
+  used in message communiation beteen UPnP devices
+*/
+def UPnPEnvelopeModule := object: {
+    /*
+      Envelope: key value pair for communicating with UPnP services
+    */
+    deftype UPnPEnvelope;
+
+    def envelope: defaultTable {
+        def e := isolate: {
+            def error_field := "__error__";
+            def t := defaultTable;
+            def init() {
+            };
+            def setValue(key, value) {
+                t := t + [key, value]
+            };
+            def getValueFrom(key, index) {
+                if: (index > t.length)
+                then: {nil}
+                else: {
+                    if: (t[index] == key)
+                    then: { t[index + 1] }
+                    else: { getValueFrom(key, index + 2) }
+                };
+            };
+            def getValue(key) {
+                getValueFrom(key, 1);
+            };
+            def getTable() {
+                t
+            };
+            def error() {
+                getValue(error_field);
+            };
+            def setError(message) {
+                setValue(error_field, message);
+            };
+            def clear() {
+                t := []
+            };
+        };
+        extendIsolate: e with: {} taggedAs: [UPnPEnvelope];
+    };
+    /* envelope simple test */
+    def e := envelope: ["default", 123];
+    if: (nil != e.getValue("a")) then: {
+        system.println("envelope error 1");
+        system.println(e.getValue("a"));
+    };
+    if: ("default" == e.getValue("default")) then: {
+        system.println("envelope error 1.1");
+        system.println(e.getValue("default"));
+    };
+    e.setValue("a", 3);
+    e.setValue("tomo", "string");
+    if: (3 != e.getValue("a")) then: {
+        system.println("envelope error 2");
+        system.println(e.getValue("a"));
+    };
+    if: ("string" != e.getValue("tomo")) then: {
+        system.println("envelope error 3");
+        system.println(e.getValue("tomo"));
+    };
+
+}
