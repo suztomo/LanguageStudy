@@ -2,18 +2,19 @@ import ~.net.suztomo.at.upnp.upnp;
 
 import /.at.lang.futures;
 
-/*
+def letter := envelope: [];
 whenUPnP: "urn:schemas-upnp-org:service:Layer3Forwarding:1" discovered: {|p|
-    // p<-print(string) style is more preferable.
-    when: (p<-sendUPnPMessage("GetDefaultConnectionService", "some string")) becomes: {|res|
-            system.println("async result returned! " + res);
-        
+    /* send with empty envelope */
+    when: (p<-sendUPnPMessage("GetDefaultConnectionService", letter))
+    becomes: {|responseEnvelope|
+        if: (nil == responseEnvelope.error()) then: {
+            system.println("async result returned! " + responseEnvelope.getValue() );
+        } else: {
+            system.println("error... : " + responseEnvelope.error());
+        }
     };
-    when: (p<-getActionNames()) becomes: { |actions|
-            system.println("action names " + actions);
-    };
-}
-*/
+};
+
 /*
 whenUPnP: "urn:schemas-upnp-org:service:RenderingControl:1" discovered: {|p|
     when: (p<-getActionNames()) becomes: { |actions|
@@ -22,16 +23,17 @@ whenUPnP: "urn:schemas-upnp-org:service:RenderingControl:1" discovered: {|p|
     };
 }
 */
+/*
 wheneverUPnP: ANY_UPNP_SERVICE discovered: {|p|
-        when: (p<-getServiceType()) becomes: {|type|
-            when: (p<-getActionNames()) becomes: { |actions|
-                system.println("Service: " + type);
-                foreach: {|a| system.println("  " + a); } in: actions;
+    when: (p<-getServiceType()) becomes: {|type|
+        when: (p<-getActionNames()) becomes: { |actions|
+            system.println("Service: " + type);
+            foreach: {|a| system.println("  " + a); } in: actions;
         }
     };
 }
 
-
+*/
 /*
 deftype Printer;
 

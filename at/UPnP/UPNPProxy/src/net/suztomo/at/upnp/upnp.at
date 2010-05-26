@@ -11,6 +11,7 @@ def ALL_SERVICE_KEYWORD := "_all_";
 def proxy := UPnPProxy.new(ALL_SERVICE_KEYWORD);
 system.println(proxy);
 
+
 /*
   AmbientTalk UPnP library.
 
@@ -43,41 +44,99 @@ network.online();
 
 deftype UPnPService;
 
+/*
+  Envelope: key value pair for communicating with UPnP services
+*/
+deftype UPnPEnvelope;
+
+/*
+  Error;
+*/
+deftype UPnPError;
 
 def UPnPModule := object: {
+    def envelope: defaultTable {
+        def e := object: {
+            def t := defaultTable;
+            def init() {
+            };
+            def setValue(key, value) {
+                t := t + [key, value]
+            };
+            def getValueFrom(key, index) {
+                if: (index > t.length)
+                then: {nil}
+                else: {
+                    if: (t[index] == key)
+                    then: { t[index + 1] }
+                    else: { getValueFrom(key, index + 2) }
+                };
+            };
+            def getValue(key) {
+                getValueFrom(key, 1);
+            };
+            def getTable() {
+                t
+            };
+            def error() {
+                getValue("__error__");
+            }
+        } taggedAs: [UPnPEnvelope];
+        extendIsolate: e with: {};
+    };
+    /* envelope simple test */
+    def e := envelope: ["default", 123];
+    if: (nil != e.getValue("a")) then: {
+        system.println("envelope error 1");
+        system.println(e.getValue("a"));
+    };
+    if: ("default" == e.getValue("default")) then: {
+        system.println("envelope error 1.1");
+        system.println(e.getValue("default"));
+    };
+    e.setValue("a", 3);
+    e.setValue("tomo", "string");
+    if: (3 != e.getValue("a")) then: {
+        system.println("envelope error 2");
+        system.println(e.getValue("a"));
+    };
+    if: ("string" != e.getValue("tomo")) then: {
+        system.println("envelope error 3");
+        system.println(e.getValue("tomo"));
+    };
+
 
     def ANY_UPNP_SERVICE := ALL_SERVICE_KEYWORD;
-
     def createAndExportProxyActor(serviceName, serviceArgs) {
         /* 1. creates actor */
         def sn := serviceName;
         def descURL := serviceArgs;
         def sargs := serviceArgs;
         def args := isolate: {|sargs|
-                              def getContents() {sargs};
+            def getContents() {sargs};
         };
         def s := actor:{|sn, args|
             def serviceName := sn;
-                        deftype UPnPService;
-                        def UPnPServiceClass := jlobby.net.suztomo.at.upnp.ATUPnPService;
-                        def service := UPnPServiceClass.new(sn, args.getContents());
-                        def getServiceType() { service.getServiceType() };
-            def sendUPnPMessage(message, @args) {
-                service.sendMessage(message, @args);
+            deftype UPnPService;
+            def UPnPServiceClass := jlobby.net.suztomo.at.upnp.ATUPnPService;
+            def service := UPnPServiceClass.new(sn, args.getContents());
+            def getServiceType() { service.getServiceType() };
+            def sendUPnPMessage(message, envelope) {
+                if: (is: envelope taggedAs: UPnPEnvelope)
+                then: { service.sendMessage(message, envelope) }
+                else: { envelope: ["__error__", "Arguments is not envelope"]}
             };
-                        def getActionNames() {
-                            service.getActionNames();
-                        };
+            def getActionNames() {
+                service.getActionNames();
+            };
             def p(a) {system.println(a)};
-
-
             def a := reflectOnActor();
             a.becomeMirroredBy: (extend: a with: {
-                    /*
-                        def createMessage(sel, args, types) {
-                            p("Creating Message");
-                            system.println("  sel: " + sel);
-                            super^createMessage(sel, args, types);
+                /*
+                def createMessage(sel, args, types) {
+                    p("Creating Message");
+                    system.println("  sel: " + sel);
+                    super^createMessage(sel, args, types);
                         };
                         def invoke(slf, invocation) {
                             system.println("self : " + slf);
@@ -97,7 +156,7 @@ def UPnPModule := object: {
                             super^receive(receiver, msg);
                         }
 */
-                });
+            });
             /* 2. setups the actor */
                         /*
             proxy<-configureProxyActor(self);
@@ -105,14 +164,14 @@ def UPnPModule := object: {
                         */
             /* 3. export the actor as the service */
             export: self as: UPnPService;
-        }; // actor creation
+        };
     };
 
     /*
       @serivceName : Service Name to discover. If null, all service will be discovered.
     */
     def enableUPnPDiscover(serviceName := "Printer") {
-      proxy.discover(serviceName, self);
+        proxy.discover(serviceName, self);
     };
 
     /*
@@ -122,13 +181,13 @@ def UPnPModule := object: {
         enableFutures(true);
         enableUPnPDiscover(serviceName);
         when: UPnPService discovered: { |proxyActor|
-                if: (serviceName != ANY_UPNP_SERVICE) then: {
-                        when: (proxyActor<-getServiceType()) becomes: {|discoveredType|
-                                                                  if: (serviceName == discoveredType) then: {
-                                                                          resolvedBlock(proxyActor);
-                                                                      }
-                        }
-                    } else: { resolvedBlock(proxyActor) };
+            if: (serviceName != ANY_UPNP_SERVICE) then: {
+                when: (proxyActor<-getServiceType()) becomes: {|discoveredType|
+                    if: (serviceName == discoveredType) then: {
+                        resolvedBlock(proxyActor);
+                    }
+                }
+            } else: { resolvedBlock(proxyActor) };
         }
     };
     
@@ -136,17 +195,15 @@ def UPnPModule := object: {
         enableFutures(true);
         enableUPnPDiscover(serviceName);
         whenever: UPnPService discovered: { |proxyActor|
-                if: (serviceName != ANY_UPNP_SERVICE) then: {
-                        when: (proxyActor<-getServiceType()) becomes: {|discoveredType|
-                                                                  if: (serviceName == discoveredType) then: {
-                                                                          resolvedBlock(proxyActor);
-                                                                      }
-                        }
-                    } else: {
-                    resolvedBlock(proxyActor);
+            if: (serviceName != ANY_UPNP_SERVICE) then: {
+                when: (proxyActor<-getServiceType()) becomes: {|discoveredType|
+                    if: (serviceName == discoveredType) then: {
+                        resolvedBlock(proxyActor);
+                    }
                 }
+            } else: {
+                resolvedBlock(proxyActor);
+            }
         }
     };
-
-
 }

@@ -34,7 +34,6 @@ public class ATUPnPProxy {
 	 */
 	@SuppressWarnings("unchecked")
 	public void discover(String serviceName, ATProxy atproxy) {
-		String descURL = "http://123.123.123.34/hgoe.xml";
 		if (serviceName == null) {
 			System.out.println("No service Name provided.");
 		} else {
