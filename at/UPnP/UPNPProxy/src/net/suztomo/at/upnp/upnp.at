@@ -67,54 +67,56 @@ def UPnPModule := object: {
             import ~.net.suztomo.at.upnp.envelope;
             def UPnPServiceClass := jlobby.net.suztomo.at.upnp.ATUPnPService;
             def service := UPnPServiceClass.new(sn, args.getContents());
-            def getServiceType() { service.getServiceType() };
-
-            def sendUPnPMessage(message, envl) {
-                
-                if: ((is: envl taggedAs: UPnPEnvelope).and: {
-                    is: envl taggedAs: /.at.types.Isolate})
-                then: {
-                    service.sendMessage(message, envl)
-                } else: { envelope: ["__error__", "Arguments is not envelope"]}
-            };
-            def getActionNames() {
-                service.getActionNames();
-            };
-            def p(a) {system.println(a)};
-            def a := reflectOnActor();
-            a.becomeMirroredBy: (extend: a with: {
+            
+            def serviceObject := object: {
+                def getServiceType() { service.getServiceType() };
+                def sendUPnPMessage(message, envl) {
+                    if: ((is: envl taggedAs: UPnPEnvelope).and: {
+                        is: envl taggedAs: /.at.types.Isolate})
+                    then: {
+                        service.sendMessage(message, envl)
+                    } else: { envelope: ["__error__", "Arguments is not envelope"]}
+                };
+                def getActionNames() {
+                    service.getActionNames();
+                };
+                def p(a) {system.println(a)};
+                def a := reflectOnActor();
+                a.becomeMirroredBy: (extend: a with: {
+                    /*
+                    def createMessage(sel, args, types) {
+                        p("Creating Message");
+                        system.println("  sel: " + sel);
+                        super^createMessage(sel, args, types);
+                    };
+                    def invoke(slf, invocation) {
+                        system.println("self : " + slf);
+                        system.println("invo : " + invocation);
+                        super^invoke(self, invocation);
+                    };
+                    def send(a,b) {
+                        p("Sending:");
+                        p("  1: " + a);
+                        p("  2: " + b);
+                        super^send(a,b);
+                    };
+                    def receive(receiver, msg) {
+                        system.println("Received:");
+                        p("  1: " + receiver);
+                        p("  2: " + msg);
+                        super^receive(receiver, msg);
+                    }
+                    */
+                });
+                /* 2. setups the actor */
                 /*
-                def createMessage(sel, args, types) {
-                    p("Creating Message");
-                    system.println("  sel: " + sel);
-                    super^createMessage(sel, args, types);
-                        };
-                        def invoke(slf, invocation) {
-                            system.println("self : " + slf);
-                            system.println("invo : " + invocation);
-                            super^invoke(self, invocation);
-                        };
-                        def send(a,b) {
-                            p("Sending:");
-                            p("  1: " + a);
-                            p("  2: " + b);
-                            super^send(a,b);
-                        };
-                        def receive(receiver, msg) {
-                            system.println("Received:");
-                            p("  1: " + receiver);
-                            p("  2: " + msg);
-                            super^receive(receiver, msg);
-                        }
-*/
-            });
-            /* 2. setups the actor */
-                        /*
-            proxy<-configureProxyActor(self);
-                        system.println("exporting");
-                        */
-            /* 3. export the actor as the service */
-            export: self as: UPnPService;
+                proxy<-configureProxyActor(self);
+                */
+
+                /* 3. export the actor as the service */
+                export: self as: UPnPService;
+            };
+            serviceObject /* return value of actor: statement */
         };
     };
 
