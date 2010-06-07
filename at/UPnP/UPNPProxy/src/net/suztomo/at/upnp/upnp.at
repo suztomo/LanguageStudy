@@ -54,19 +54,24 @@ def UPnPModule := object: {
     def UPnPError := UPnPError;
     def ANY_UPNP_SERVICE := ALL_SERVICE_KEYWORD;
     def createAndExportProxyActor(serviceName, serviceArgs) {
-        /* 1. creates actor */
+
         def sn := serviceName;
         def descURL := serviceArgs;
         def sargs := serviceArgs;
         def args := isolate: {|sargs|
             def getContents() {sargs};
         };
+
+        /* 1. creates actor */
         def s := actor:{|sn, args|
             def serviceName := sn;
             deftype UPnPService;
             import ~.net.suztomo.at.upnp.envelope;
+
             def UPnPServiceClass := jlobby.net.suztomo.at.upnp.ATUPnPService;
             def service := UPnPServiceClass.new(sn, args.getContents());
+
+            def p(a) {system.println(a)};
             
             def serviceObject := object: {
                 def getServiceType() { service.getServiceType() };
@@ -80,7 +85,6 @@ def UPnPModule := object: {
                 def getActionNames() {
                     service.getActionNames();
                 };
-                def p(a) {system.println(a)};
                 def a := reflectOnActor();
                 a.becomeMirroredBy: (extend: a with: {
                     /*
