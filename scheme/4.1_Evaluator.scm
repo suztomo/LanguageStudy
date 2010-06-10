@@ -1,5 +1,31 @@
 (define apply-in-underlying-scheme apply)
 
+(define (primitive-procedure? proc)
+  (tagged-list? proc 'primitive))
+
+(define (primitive-implementation proc) (cadr proc))
+
+(define (apply-primitive-procedure proc args)
+  (apply-in-underlying-scheme
+   (primitive-implementation proc) args))
+
+;; apply function must precede eval
+;; otherwise, the apply in oru eval is binded to native apply
+(define (apply procedure arguments)
+  (cond ((primitive-procedure? procedure)
+         (begin
+           (apply-primitive-procedure procedure arguments)))
+        ((compound-procedure? procedure) ;; how about variable? -> eval.
+         (begin
+           (eval-sequence
+            (procedure-body procedure)
+            (extend-environment ; This returns new environment
+             (procedure-parameters procedure)
+             arguments
+             (procedure-env procedure)))))
+        (else
+         (error "Unknown procedure type -- APPLY" procedure))))
+
 (define (eval exp env)
   (cond ((self-evaluating? exp) exp)
         ((variable? exp) (lookup-variable-value exp env))
@@ -12,32 +38,16 @@
         ((lambda? exp)
          (make-procedure (lambda-parameters exp)
                          (lambda-body exp)
-                         (env)))
+                         env))
         ((begin? exp)
          (eval-sequence (begin-actions exp) env))
         ((application? exp)
          (begin
-           (display "Apply")
            (apply (eval (operator exp) env)
                 (list-of-values (operands exp) env))))
         (else
          (error "Unknown expression type -- EVAL" exp))))
 
-
-(define (apply procedure arguments)
-  (cond ((primitive-procedure? procedure)
-         (begin
-           (display "Primitive Procedure") (newline)
-           (apply-primitive-procedure procedure arguments)))
-        ((compound-procedure? procedure) ;; how about variable? -> eval.
-         (eval-sequence
-          (procedure-body procedure)
-          (extend-environment ; This returns new environment
-           (procedure-parameters procedures)
-           arguments
-           (procedure-environment procedure))))
-        (else
-         (error "Unknown procedure type -- APPLY" procedure))))
 
 
 (define (list-of-values exps env)
@@ -51,11 +61,15 @@
 (define (eval-if exp env)
   ; Metacircular representation of true might not the same as
   ; the underlying Scheme
-  (if (true? (eval (if-predicate exp) env))
+  (if (eval-true? (eval (if-predicate exp) env))
       (eval (if-consequent exp) env)
       (eval (if-alternative exp) env)))
 
+(define (eval-true? exp)
+  (not (eval-null? exp)))
 
+(define (eval-null? exp)
+  (eq? exp '#f))
 
 (define (eval-sequence exps env)
   (let ((ret (eval (first-exp exps) env)))
@@ -77,7 +91,9 @@
 
 
 (define (self-evaluating? exp)
-  (or (number? exp) (string? exp)))
+  (or (number? exp) (string? exp)
+      (eq? exp '#f) (eq? exp '#t)
+      (eq? exp '())))
 
 (define (variable? exp)
   (symbol? exp))
@@ -262,15 +278,17 @@
           (cons (make-lambda variables body)
             values)))))
 
+; '((a 3) (b 5)) -> '(a b)
 (define (var-names vars)
   (if (null? vars)
       ()
-      (cons (car vars) (var-names (cdr vars)))))
+      (cons (caar vars) (var-names (cdr vars)))))
 
+; ((a 3) (b 5)) -> (3 5)
 (define (var-exps vars)
   (if (null? vars)
       ()
-      (cons (cadr vars) (var-exps (cdr vars)))))
+      (cons (cadar vars) (var-exps (cdr vars)))))
 
 ; '(let* ((a b) (c d))
 (define (let*? exp) (tagged-list? exp 'let*))
@@ -376,6 +394,12 @@
         (list 'cons cons)
         (list 'null? null?)
         (list '+ +)
+        (list '* *)
+        (list '- -)
+        (list '> >)
+        (list '< <)
+        (list '>= >=)
+        (list '<= <=)
         ))
 
 (define (primitive-procedure-names)
@@ -396,17 +420,6 @@
 
 (define the-global-environment (setup-environment))
 
-(define (primitive-procedure? proc)
-  (tagged-list? proc 'primitive))
-
-(define (primitive-implementation proc) (cadr proc))
-
-
-
-(define (apply-primitive-procedure proc args)
-  (print "Hello, World") (newline)
-  (apply-in-underlying-scheme
-   (primitive-implementation proc) args))
 
 (define input-prompt ";;; M-Eval imput;")
 (define output-prompt ";;; M-Eval value:")
@@ -418,6 +431,8 @@
       (announce-output output-prompt)
       (user-print output)))
   (driver-loop))
+
+(define dl driver-loop)
 
 (define (prompt-for-input string)
   (newline) (newline) (display string) (newline))
@@ -432,4 +447,34 @@
                      (procedure-body object)
                      '<procedure-env>))
       (display object)))
+
+; tests
+
+;; (let ((input '(+ 4 5))
+;;       (answer 8))
+;;   (let ((output (eval input the-global-environment)))
+;;     (display answer) (newline)
+;;     (if (number? output)
+;;         (display "Thsi is number")
+;;         (display "This is not number"))
+;;     (if (equal? output answer)
+;;         (display "ok")
+;;         (display "ng"))))
+(define (testEval input answer)
+  (let ((output (eval input the-global-environment)))
+    (if (equal? output answer)
+        (display "ok! ")
+        (display "NG... "))))
+(testEval '(+ 4 5) 9)
+(testEval '(let ((a 5) (b 3)) (+ a b)) 8)
+(testEval '(cons 1 2) '(1 . 2))
+(testEval '(car (cons 5 7)) 5)
+(testEval '(cdr (cons 5 7)) 7)
+(testEval '(if #t 19 23) 19)
+(testEval '(if #f 19 23) 23)
+(testEval '(if () 19 23) 19)
+(testEval '(if (> 5 2) 20 29) 20)
+(testEval '((lambda (a b) (+ a b)) 3 5) 8)
+(testEval '(let ((k (lambda (a b) (let ((c 3)) (+ (- b a) c))))) (k 5 10)) 8)
+
 
