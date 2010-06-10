@@ -34,6 +34,7 @@
         ((definition? exp) (eval-definition exp env))
         ((if? exp) (eval-if exp env))
         ((cond? exp) (eval (cond->if exp) env))
+        ((let*? exp) (eval (let*->let exp) env))
         ((let? exp) (eval (let->combination exp) env))
         ((lambda? exp)
          (make-procedure (lambda-parameters exp)
@@ -290,7 +291,7 @@
       ()
       (cons (cadar vars) (var-exps (cdr vars)))))
 
-; '(let* ((a b) (c d))
+; '(let* ((a b) (c a))
 (define (let*? exp) (tagged-list? exp 'let*))
 (define (let*->let exp)
   (let ((vars (let-var-explicit (let-vars exp)))
@@ -298,8 +299,11 @@
     (define (iter vs)
       (if (last-exp? vs)
           (make-let (list (car vs)) body)
-          (make-let (list (car vs)) (iter (cdr vs)))))
+          (make-let (list (car vs)) (list (iter (cdr vs))))))
     (iter vars)))
+
+;(let*->let '(let* ((a 5) (b a)) b))
+;'(let ((a 5)) (let ((b a)) b))
 
 
 (define (make-procedure parameters body env)
@@ -476,5 +480,5 @@
 (testEval '(if (> 5 2) 20 29) 20)
 (testEval '((lambda (a b) (+ a b)) 3 5) 8)
 (testEval '(let ((k (lambda (a b) (let ((c 3)) (+ (- b a) c))))) (k 5 10)) 8)
-
+(testEval '(let* ((a 5) (b (* a 3))) (+ b 1)) 16)
 
