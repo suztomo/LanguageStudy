@@ -246,7 +246,7 @@
 (define (let-vars exp) (cadr exp))
 (define (let-body exp) (cddr exp))
 (define (let-named-vars exp) (caddr exp))
-(define (let-named-vody exp) (cdddr exp))
+(define (let-named-body exp) (cdddr exp))
 (define (make-let vars body)
   (cons 'let (cons vars body)))
 
@@ -261,16 +261,28 @@
             (cons (list h meta-nil) (let-var-explicit rest))
             (cons h (let-var-explicit rest))))))
 
+(define (let-transform exp sym)
+  (define (iter exp)
+    (if (not (pair? exp))
+        exp
+        (if (and (symbol? (car exp)) (eq? sym (car exp)))
+            (cons (car exp) (cons sym (iter (cdr exp))))
+            (cons (iter (car exp)) (iter (cdr exp))))))
+  (iter exp))
+
+(let-transform '(hoge (tako (hoge 1) 2 3)) 'hoge)
+
+
 (define (let->combination exp)
   (if (symbol? (cadr exp)) ; Named let '(let fun ((a b) (c d)) body)
       (let ((func-name (cadr exp))
-            (vars (let-var-explicit (let-named-vars exp)))
-            (body (let-named-body exp)))
+            (vars (let-var-explicit (let-named-vars exp))))
+        (let ((body (let-transform (let-named-body exp) func-name)))
         (let ((variables (cons func-name (var-names vars))))
           (let ((values (cons (make-lambda variables body)
                              (var-exps vars))))
-            (cons (make-lambda variables body)
-                  values))))
+            (cons (make-lambda variables body) ; cons means apply.
+                  values)))))
       ; normal let '(let ((a b) (c d)) body)
       (let ((vars (let-var-explicit (let-vars exp)))
             (body (let-body exp)))
@@ -404,6 +416,7 @@
         (list '< <)
         (list '>= >=)
         (list '<= <=)
+        (list '= =)
         ))
 
 (define (primitive-procedure-names)
@@ -481,4 +494,10 @@
 (testEval '((lambda (a b) (+ a b)) 3 5) 8)
 (testEval '(let ((k (lambda (a b) (let ((c 3)) (+ (- b a) c))))) (k 5 10)) 8)
 (testEval '(let* ((a 5) (b (* a 3))) (+ b 1)) 16)
-
+(testEval '(begin (define six 6) (define (mulseven x) (* 7 x)) (mulseven six)) 42)
+(testEval '(begin (define (fib n)
+                    (let fib-iter ((a 1) (b 0) (count n))
+                      (if (= count 0)
+                          b
+                          (fib-iter (+ a b) a (- count 1)))))
+                  (fib 5)) 5)
