@@ -1,0 +1,11 @@
+network.online();
+deftype C;
+
+// c
+def c := object: {
+    def put(x) {
+        x<-hello();
+    }
+};
+export: c as: C;
+

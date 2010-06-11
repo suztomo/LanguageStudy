@@ -1,0 +1,10 @@
+network.online();
+deftype Ball;
+
+def ball := object: {
+    def tako() {
+        system.println("Hello");
+    }
+};
+
+export: ball as: Ball;

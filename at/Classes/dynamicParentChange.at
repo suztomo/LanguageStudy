@@ -1,0 +1,19 @@
+def parentA := object: {
+    def aMethod() { 1 };
+    def aField := 1;
+};
+
+def parentB := object: {
+    def bMethod() { 2 };
+    def bField := 2;
+};
+
+def childA := extend: parentA with: {
+    def cField := 3;
+    def getAField() { super^aMethod() };
+};
+
+def o := childA.new();
+system.println(o.getAField());
+o.super := parentB;
+system.println(o.getAField());

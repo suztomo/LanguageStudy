@@ -1,0 +1,16 @@
+network.online();
+deftype Printer;
+def service := object: { 
+  def print(aDoc) {
+    system.println("printing " +aDoc);
+    "ok"
+  };
+  def dispray() {
+    system.println("wrong method");
+  };
+  def configA() {};
+  def configB() {};
+  def configC() {};
+};
+export: service as: Printer;
+

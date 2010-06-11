@@ -1,0 +1,11 @@
+network.online();
+deftype A;
+deftype C;
+
+// b
+system.println("Start to connect A and C");
+when: A discovered: { |a|
+    when: C discovered: { |c|
+        c<-put(a);
+    }
+}

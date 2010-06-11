@@ -1,0 +1,10 @@
+network.online();
+deftype Receiver;
+
+def o := object: {
+    def getAndInvoke(o1) {
+        o1<-tako();
+    }
+};
+
+export: o as: Receiver;

@@ -1,0 +1,19 @@
+import /.at.lang.futures;
+enableFutures(true);
+
+network.online();
+deftype DisplayObject;
+deftype Printer <: DisplayObject;
+
+when: Printer discovered: {|printer|
+    printer<-configA();
+    printer<-configB();
+    printer<-configC();
+    when: (printer<-display("Hello")) becomes: { |res|
+      system.println("printing result:" + res);
+    };
+}
+
+/*  if: true then: {system.println("do nothing");} else: {
+    };
+*/

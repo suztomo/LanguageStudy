@@ -1,0 +1,11 @@
+
+network.online();
+deftype A;
+
+// a
+def a := object: {
+    def hello() {
+        system.println("Hello, World");
+    }
+};
+export: a as: A;

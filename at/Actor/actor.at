@@ -1,0 +1,11 @@
+import /.at.lang.futures;
+deftype Ball;
+deftype Receiver;
+
+network.online();
+
+when: Ball discovered: {|ball|
+    when: Receiver discovered: {|receiver|
+        receiver<-getAndInvoke(ball);
+    }
+}

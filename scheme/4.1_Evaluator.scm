@@ -501,3 +501,4 @@
                           b
                           (fib-iter (+ a b) a (- count 1)))))
                   (fib 5)) 5)
+; 0 1 1 2 3 5
