@@ -46,6 +46,12 @@
          (make-procedure (lambda-parameters exp)
                          (lambda-body exp)
                          env))
+;;         ((cons? exp)
+;;          (delayed-cons (eval (cadr exp) env) (caddr exp)))
+;;         ((car? exp)
+;;          (delayed-car (eval (cadr exp) env)))
+;;         ((cdr? exp)
+;;          (delayed-cdr (eval (cadr exp) env)))
         ((begin? exp)
          (eval-sequence (begin-actions exp) env))
         ((application? exp)
@@ -393,6 +399,25 @@
       (cons (actual-value (first-operand exps) env)
             (list-of-arg-values (rest-operands exps) env))))
 
+(define (cons? exp)
+  (tagged-list? exp 'cons))
+
+(define (car? exp)
+  (tagged-list? exp 'car))
+
+(define (cdr? exp)
+  (tagged-list? exp 'cdr))
+
+; the expression is not to  be evaluated.
+(define (delayed-cons a b)
+  (lambda (x) (x a b)))
+
+(define (delayed-car a)
+  (a (lambda (x y) x)))
+
+(define (delayed-cdr a)
+  (a (lambda (x y) y)))
+
 (define (lookup-variable-value var env)
   (define (env-loop env) ; for environment recursively
     (define (scan vars vals) ; for frame recursively
@@ -465,9 +490,9 @@
 
 
 (define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
+  (list ;(list 'car car)
+        ;(list 'cdr cdr)
+        ;(list 'cons cons)
         (list 'null? null?)
         (list '+ +)
         (list '* *)
@@ -477,6 +502,7 @@
         (list '>= >=)
         (list '<= <=)
         (list '= =)
+        (list 'display display)
         ))
 
 (define (primitive-procedure-names)
@@ -544,7 +570,8 @@
         (display "NG... "))))
 (testEval '(+ 4 5) 9)
 (testEval '(let ((a 5) (b 3)) (+ a b)) 8)
-(testEval '(cons 1 2) '(1 . 2))
+;(testEval '(cons 1 2) '(1 . 2))
+;(testEval '(cons 1 2) (lambda (a) 1 2))
 (testEval '(car (cons 5 7)) 5)
 (testEval '(cdr (cons 5 7)) 7)
 (testEval '(if #t 19 23) 19)
@@ -560,9 +587,27 @@
                       (if (= count 0)
                           b
                           (fib-iter (+ a b) a (- count 1)))))
-                  (fib 5)) 5)
+                  (fib 5)) 5) ; 0 1 1 2 3 5
 (testEval '(begin
              (define (try a b)
                (if (= a 0) 1 b))
              (try 0 (/ 1 0))) 1)
-; 0 1 1 2 3 5
+(testEval '(begin
+             (define (cons x y) (lambda (m) (m x y)))
+             (define (car x) (x (lambda (a b) a)))
+             (define (cdr x) (x (lambda (a b) b)))
+             (define (one-list)
+               (cons 1 (one-list)))
+             (car (cdr (cdr (cdr (one-list)))))) 1)
+(testEval '(begin
+             (define (cons x y) (lambda (m) (m x y)))
+             (define (car x) (x (lambda (a b) a)))
+             (define (cdr x) (x (lambda (a b) b)))
+             (define (incr-list x)
+               (cons x (incr-list (+ x 1))))
+             (car (cdr (cdr (cdr (incr-list 0)))))) 3)
+(testEval '(begin
+             (define (cons x y) (lambda (m) (m x y)))
+             (define (car x) (x (lambda (a b) a)))
+             (define (cdr x) (x (lambda (a b) b)))
+             (cdr (cons (/ 1 0) 5))) 5)
