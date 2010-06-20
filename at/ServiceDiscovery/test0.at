@@ -1,3 +1,5 @@
+
+// test0.at
 network.online();
 deftype Printer;
 def service := object: { 
