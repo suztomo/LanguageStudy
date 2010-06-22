@@ -1,0 +1,8 @@
+network.online();
+deftype A;
+
+when: A discovered: { |a| 
+    system.println("A discovered in C");
+    a<-methodA();
+}
+

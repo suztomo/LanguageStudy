@@ -1,0 +1,22 @@
+network.online();
+deftype Type;
+deftype A;
+
+def createGateway(a) {
+    actor: { |a|
+        def m := reflectOnActor();
+        m.becomeMirroredBy: (extend: m with: {
+            def receive(receiver, msg) {
+                system.println("Message received");
+                a <+ msg;
+            };
+        });
+    }
+};
+
+when: Type discovered: { |a|
+    system.println("Type discovered");
+    def gw := createGateway(a);
+    export: gw as: A;
+}
+

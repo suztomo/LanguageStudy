@@ -1,0 +1,10 @@
+network.online();
+deftype C;
+
+def serviceC := object: {
+    def put(a) {
+        x<-hello();
+    }
+};
+
+export: serviceC as: C;

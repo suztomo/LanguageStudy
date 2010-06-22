@@ -1,0 +1,21 @@
+network.online();
+deftype A;
+deftype C;
+
+/*
+Finds A and C, passes the reference of A to C.
+*/
+when: A discovered: { |a|
+    system.println("A discovered");
+    when: C discovered: { |c|
+        def gw := actor: { |a, c|
+            def m := reflectOnActor();
+            m.becomeMirroredBy: (extend: m with: {
+                def receive(receiver, msg) {
+                    a <+ msg;
+                };
+            });
+        }; // end of gateway
+        c<-put(gw);
+    }
+}

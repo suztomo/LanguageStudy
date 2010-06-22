@@ -1,0 +1,11 @@
+network.online();
+deftype A;
+
+def serviceA := object: {
+    def hello() {
+        system.println("Hello, world");
+    }
+};
+
+export: serviceA as: A;
+
