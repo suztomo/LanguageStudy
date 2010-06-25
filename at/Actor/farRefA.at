@@ -4,7 +4,6 @@ deftype A;
 def a := object: {
     def methodA() {
         system.println("methodA invoked");
-        "Hello, future!"
     }
 };
 

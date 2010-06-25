@@ -3,8 +3,6 @@ deftype A;
 
 when: A discovered: { |a| 
     system.println("A discovered in C");
-    when: (a<-methodA()) becomes: { |res|
-        system.println("Response: " + res);
-    }
+    a<-methodA();
 }
 

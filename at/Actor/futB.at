@@ -4,18 +4,32 @@ deftype A;
 
 def createGateway(a) {
     actor: { |a|
+        import /.at.lang.futures;
+        enableFutures(true);
         def m := reflectOnActor();
+        def fut;
         m.becomeMirroredBy: (extend: m with: {
             def receive(receiver, msg) {
-                system.println("Message received");
-                a <+ msg;
+                if: (`resolveWithValue != msg.selector) then: {
+                    def futuredMsg := super^createMessage(msg.selector, msg.arguments, []);
+                    fut := msg.future;
+                    def fut2 := a <+ (futuredMsg);
+/*
+                    when: fut2 becomes: {|res|
+                        (msg.future)<- resolveWithValue(res);
+                    };
+*/
+                } else: {
+                    system.println("resolveWithValue!");
+                    fut <+ msg;
+                }
             };
         });
     }
 };
 
-when: Type discovered: { |a|
-    system.println("Type discovered");
+when: A discovered: { |a|
+    system.println("A discovered");
     def gw := createGateway(a);
     export: gw as: A;
 }
