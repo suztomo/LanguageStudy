@@ -7,21 +7,24 @@ def createGateway(a) {
         import /.at.lang.futures;
         enableFutures(true);
         def m := reflectOnActor();
-        def fut;
+//        def fut;
         m.becomeMirroredBy: (extend: m with: {
+            /*
+            pub      *      sub
+             A  <=>  B  <=>  C
+            */
             def receive(receiver, msg) {
                 if: (`resolveWithValue != msg.selector) then: {
+                    system.println("Message from C to A");
+                    def futureFromC := msg.future;
                     def futuredMsg := super^createMessage(msg.selector, msg.arguments, []);
-                    fut := msg.future;
-                    def fut2 := a <+ (futuredMsg);
-/*
-                    when: fut2 becomes: {|res|
-                        (msg.future)<- resolveWithValue(res);
-                    };
-*/
+                    when: (a <+ futuredMsg) becomes: {|val|
+                        futureFromC<-resolveWithValue(val)@[/.at.lang.firstclassrefs.MetaMessage,
+                                                    /.at.lang.futures.OneWayMessage];
+                    }
                 } else: {
-                    system.println("resolveWithValue!");
-                    fut <+ msg;
+                    system.println("Message from A to C");
+                    super^receive(receiver, msg);
                 }
             };
         });
@@ -34,3 +37,13 @@ when: A discovered: { |a|
     export: gw as: A;
 }
 
+
+
+
+
+
+/*
+                    when: fut2 becomes: {|res|
+                        (msg.future)<- resolveWithValue(res);
+                    };
+*/

@@ -1,0 +1,60 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DT\
+D/xhtml1-strict.dtd">
+<!--
+Canvas test
+"HTML5のcanvas入門メモ"
+http://d.hatena.ne.jp/memememomo/20100512/1273612997
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" lang="ja">
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<style type="text/css">
+canvas {
+   border: solid 3px #000;
+}
+</style>
+<script type="text/javascript">
+window.onload = function() {
+   var canvas = document.getElementById('canvas');
+   var cc = canvas.getContext('2d');
+   cc.save();
+
+   // 線を引く
+   cc.beginPath();
+   cc.lineWidth = 5;
+   cc.lineTo(50, 120);
+   cc.lineTo(250, 180);
+   cc.stroke();
+
+   cc.restore();
+
+   cc.save();
+
+
+   // 影付き矩形を描く
+   cc.beginPath();
+   cc.fillStyle = '#F00';
+   cc.shadowBlur = 5;
+   cc.shadowColor = '#000';
+   cc.shadowOffsetX = 5;
+   cc.shadowOffsetY = 5;
+   cc.fillRect(30, 30, 100, 50);
+   cc.restore();
+   cc.save();
+
+   // 円を描く
+   cc.beginPath();
+   cc.strokeStyle = '#00F';
+   cc.arc(200, 100, 30, 0, Math.PI * 2, false);
+   cc.stroke();
+
+   cc.restore();
+};
+</script>
+<title></title>
+</head>
+
+<body>
+<canvas id="canvas" width="300" height="200"></canvas>
+</body>
+</html>

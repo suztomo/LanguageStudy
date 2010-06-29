@@ -1,0 +1,91 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DT\
+D/xhtml1-strict.dtd">
+<!--
+Canvas animation test
+"HTML5のcanvas入門メモ"
+http://d.hatena.ne.jp/memememomo/20100512/1273612997
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" lang="ja">
+
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<style type="text/css">
+canvas {
+    border: solid 3px #000;
+}
+</style>
+<script type="text/javascript">
+window.onload = function() {
+    var canvas = document.getElementById('canvas');
+    var cc = canvas.getContext('2d');
+
+    // 円の初期座標
+    var x = canvas.width / 2;
+    var y = canvas.height / 2;
+    var r = 30;
+
+    // 速度
+    var v_x = 2.0;
+    var v_y = 2.0;
+
+    // メインループ
+    var loop = function() {
+
+        // 円の座標を変更
+        x += v_x;
+        y += v_y;
+
+
+      	// canvasの境界
+        if (x - r < 0) {
+           x = r;
+           v_x *= -1;
+        }
+        if (x + r > canvas.width) {
+           x = canvas.width - r;
+           v_x *= -1;
+        }
+        if (y - r < 0) {
+            y = r;
+            v_y *= -1;
+        }
+        if (y + r > canvas.height) {
+            y = canvas.height - r;
+            v_y *= -1;
+        }
+
+
+      	// 円の描画
+        cc.save();
+
+        cc.beginPath();
+        cc.clearRect(0, 0, canvas.width, canvas.height);
+
+        cc.restore();
+
+        cc.beginPath();
+
+        cc.strokeStyle = '#00F';
+        cc.fillStyle = '#00F';
+        cc.arc(x, y, r, 0, Math.PI * 2, false);
+        cc.fill();
+        cc.stroke();
+
+        cc.restore();
+
+
+        // 次の実行
+        setTimeout(loop, 30);
+     };
+
+     // 初期起動
+     loop();
+};
+</script>
+<title></title>
+</head>
+
+<body>
+<canvas id="canvas" width="300" height="200"></canvas>
+</body>
+</html>
