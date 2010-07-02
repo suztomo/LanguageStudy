@@ -41,6 +41,7 @@
     var ev;
     var t;
     var v;
+    var e;
 
   </script>
   <body>
@@ -51,12 +52,23 @@
     </svg:svg>
 
     <svg:svg id="SVGRoot" version="1.1" baseProfile="full" width="300px" height="200px"> 
-      <svg:circle id="targetCircle" class="circle" cx="150" cy="100" r="50" fill="#ff0000" stroke="#000000" stroke-width="5" />
+      <defs>
+        <filter id="Gaussian_Blur">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="10"/>
+        </filter>
+      </defs>
+
+
+      <svg:circle id="targetCircle" class="circle" cx="150" cy="100" r="50" fill="#ff0000" stroke="#000000" stroke-width="5" >
+        <animate attributeType="CSS" attributeName="opacity" 
+                 from="1" to="0" dur="2s" repeatCount="indefinite" />
+      </svg:circle>
       <svg:circle class="circle" cx="10" cy="100" r="50" fill="#00ff00" stroke="#000000" stroke-width="5" />
       <svg:circle class="circle" cx="200" cy="100" r="50" fill="#0000ff" stroke="#000000" stroke-width="5" />
 
     </svg:svg>
     <svg:svg id="VMCanvas" class="canvas" version="1.1" baseProfile="full" width="300px" height="200px">
+
     </svg:svg>
     <svg:svg id="ActorCanvas" class="canvas" version="1.1" baseProfile="full" width="300px" height="200px">
     </svg:svg>

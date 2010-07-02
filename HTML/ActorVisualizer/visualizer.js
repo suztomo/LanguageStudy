@@ -34,7 +34,19 @@ jQuery(function ($) {
         r.setAttribute('rx', attr['rx']);
         r.setAttribute('ry', attr['ry']);
         r.setAttribute('fill', attr['fill']);
+        r.setAttribute('stroke', '#333');
+        r.setAttribute('stroke-width', 1);
         return r;
+    }
+
+    function createText(attr) {
+        checkAttribute(attr, ["text", "x", "y"], "invalid attribute for text");
+        var t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute('x', attr['x']);
+        t.setAttribute('y', attr['y']);
+        t.setAttribute('style', "font-family:Verdana;font-size:24");
+        t.appendChild(document.createTextNode(attr['text']));
+        return t;
     }
 
     function init() {
@@ -69,7 +81,7 @@ jQuery(function ($) {
         node.setAttribute('cy', y);
     }
 
-    function moveSVGRect(node, x, y) {
+    function moveSVG(node, x, y) {
         node.setAttribute('x', x);
         node.setAttribute('y', y);
     }
@@ -107,10 +119,24 @@ jQuery(function ($) {
 
     function createVM(id) {
         var instance = {
-            x : 55,
-            y : 55,
+            x : 0,
+            y : 0,
+            width: 280,
+            height: 220,
+            vx : 1,
+            vy : 1,
+            ax : 0,
+            ay : 0,
+            fx : 0,
+            fy : 0,
+            m : 10,
+            containerX : 0,
+            containerY : 0,
+            containerWidth: 0,
+            containerHeight: 0,
             vmid: id,
             svgNode : 0,
+            svgTextNode: 0,
             color: "#CCC",
             dragStatus : 0,
             dragRelativeX : 0,
@@ -123,7 +149,7 @@ jQuery(function ($) {
                 }
                 var svgNode = createRoundedRect({
                     x: 0, y: 0, rx: 5, ry: 5, fill: this.color,
-                    height: 150, width: 220
+                    height: this.height, width: this.width
                 });
                 svgNode.setAttribute('draggable', true);
                 svgNode.vm = self;
@@ -131,17 +157,55 @@ jQuery(function ($) {
                 svgNode.addEventListener("mousedown", this.onMouseDown, true);
                 svgNode.addEventListener("mousemove", this.onMouseMove, true);
                 svgNode.addEventListener("mouseup", this.onMouseUp, true);
+                svgNode.setAttribute('title', "" + self.vmid);
                 self.svgNode = svgNode;
+                self.x = Math.floor(Math.random() * 300);
+                self.y = Math.floor(Math.random() * 200);
+                self.textNode
+                var t = createText({x: self.x, y: self.y, text: self.vmid});
+                VMCanvas.appendChild(t);
+                self.svgTextNode = t;
             },
             draw: function () {
-                moveSVGRect(this.svgNode, this.x, this.y);
+                moveSVG(this.svgNode, this.x, this.y);
+                moveSVG(this.svgTextNode, this.x + 10, this.y+30);
             },
             update: function () {
                 if (this.dragStatus == 0) {
-                    
+                    this.checkBoundary();
+                    this.ax = this.fx / this.m;
+                    this.ay = this.fy / this.m;
+                    this.vx += this.ax;
+                    this.vy += this.ay;
+                    this.vx -= this.vx / 10;
+                    this.vy -= this.vy / 10;
+                    this.x += Math.floor(this.vx);
+                    this.y += Math.floor(this.vy);
                 } else if (this.dragStatus == 1) {
                     this.x = this.mouseX - this.dragRelativeX;
                     this.y = this.mouseY - this.dragRelativeY;
+                }
+                this.fx = 0;
+                this.fy = 0;
+            },
+            checkBoundary: function() {
+                this.containerX = this.svgNode.parentElement.x.animVal.value;
+                this.containerY = this.svgNode.parentElement.y.animVal.value;
+                this.containerWidth = this.svgNode.parentElement.width.animVal.value;
+                this.containerHeight = this.svgNode.parentElement.height.animVal.value;
+                if (this.x < this.containerX) {
+                    this.fx += (this.containerX - this.x) / 5;
+                }
+                if (this.x + this.width > this.containerWidth + this.containerX) {
+                    this.fx += - ((this.x + this.width)
+                                 - (this.containerWidth + this.containerX) ) / 5;
+                }
+                if (this.y < this.containerY) {
+                    this.fy += (this.containerY - this.y) / 5;
+                }
+                if (this.y + this.height > this.containerHeight + this.containerY) {
+                    this.fy += - ((this.y + this.height)
+                                 - (this.containerHeight + this.containerY)) / 5;
                 }
             },
             onMouseDown: function(evt) {
@@ -153,6 +217,9 @@ jQuery(function ($) {
                 self.dragRelativeY = evt.offsetY - self.y;
                 ev = evt;
                 self.dragStatus = 1;
+                e = self
+                e.svgNode.parentElement.appendChild(e.svgNode);
+                e.svgNode.parentElement.appendChild(e.svgTextNode);
             },
             onMouseMove: function(evt) {
                 self = evt.target.vm;
@@ -171,9 +238,9 @@ jQuery(function ($) {
     ca = createActor;
     cv = createVM;
 
-
     ActorManager = {
         actors : [],
+        addressBook : {},
         draw : function () {
             for (var i=0; i<actors.length; ++i) {
                 var a = actors[i];
@@ -185,22 +252,51 @@ jQuery(function ($) {
                 var a = actors[i];
                 a.update();
             }
+        },
+        put : function(actor) {
+            this.actors.push(actor);
+            this.addressBook[actor.aid] = actor;
+        },
+        get : function(aid) {
+            return this.addressBook[aid];
         }
     };
 
     VMManager = {
         vms : [],
-        draw: function(self) {
-            for (var i=0; i< self.vms.length; ++i) {
-                var v = self.vms[i];
+        addressBook : {},
+        springLength : 500,
+        k : 5,
+        draw: function() {
+            for (var i=0; i< this.vms.length; ++i) {
+                var v = this.vms[i];
                 v.draw(v);
             }
         },
-        update : function(self) {
-            for (var i=0; i< self.vms.length; ++i) {
-                var v = self.vms[i];
+        update : function() {
+            for (var i=0; i< this.vms.length; ++i) {
+                var v = this.vms[i];
+                for (var j=0; j < this.vms.length; ++j) {
+                    if (j == i) continue;
+                    var w = this.vms[j];
+                    var dx = (w.x - v.x);
+                    var dy = (w.y - v.y);
+                    var d = Math.sqrt(dx * dx + dy * dy);
+                    var f = (d - this.springLength) / this.k;
+                    var fx = f * dx / d;
+                    var fy = f * dy / d;
+                    v.fx += fx;
+                    v.fy += fy;
+                }
                 v.update(v);
             }
+        },
+        put : function(vm) {
+            this.vms.push(vm);
+            this.addressBook[vm.vmid] = vm;
+        },
+        get : function(vmid) {
+            return this.addressBook[vmid];
         }
     };
 
@@ -227,15 +323,15 @@ jQuery(function ($) {
         }
     };
     draw=function() {
-        VMManager.update(VMManager);
-        VMManager.draw(VMManager);
+        VMManager.update();
+        VMManager.draw();
         /*
         for (var i=0; i<circles.length; i++) {
             var c = circles[i];
             moveCircle(c);
         }*/
     };
-    var frame = 10;
+    var frame = 50;
     var repeat = true;
     setup();
     var count = 0;
@@ -248,7 +344,12 @@ jQuery(function ($) {
     init();
 
 
-    var v = createVM("tako");
-    VMManager.vms = [v];
+    v = createVM("tako");
+    var v2 = createVM("hoge");
+    VMManager.vms = [v, v2];
+    for (var i = 0; i< 10; i++) {
+        VMManager.put(createVM("vm" + i));
+    }
+
     repeator();
 });
