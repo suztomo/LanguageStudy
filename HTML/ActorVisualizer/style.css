@@ -1,8 +1,14 @@
 body {
     background: #333333;
+    margin: 0;
 }
 
 
 h1 {
     color: #FFF;
+}
+
+svg{
+    display: block;
+    position: absolute;
 }
