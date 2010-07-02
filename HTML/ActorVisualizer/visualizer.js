@@ -40,11 +40,11 @@ jQuery(function ($) {
     }
 
     function createText(attr) {
-        checkAttribute(attr, ["text", "x", "y"], "invalid attribute for text");
+        checkAttribute(attr, ["text", "x", "y", "size"], "invalid attribute for text");
         var t = document.createElementNS("http://www.w3.org/2000/svg", "text");
         t.setAttribute('x', attr['x']);
         t.setAttribute('y', attr['y']);
-        t.setAttribute('style', "font-family:Verdana;font-size:24");
+        t.setAttribute('style', "font-family:Verdana;font-size:" +  attr['size']);
         t.appendChild(document.createTextNode(attr['text']));
         return t;
     }
@@ -89,10 +89,22 @@ jQuery(function ($) {
     function createActor(vm, id) {
         var instance = {
             vm : vm,
-            x : 55,
-            y : 55,
+            x : 0,
+            y : 0,
+            vx : 1,
+            vy : 1,
+            ax : 0,
+            ay : 0,
+            fx : 0,
+            fy : 0,
+            m : 5,
+            containerX : 0,
+            containerY : 0,
+            containerWidth: 0,
+            containerHeight: 0,
             aid : id,
-            svgNode : undefined,
+            svgNode : null,
+            containerInner: 0.2,
             color: "#BB1111",
             init : function() {
                 if (vm == undefined) {
@@ -101,16 +113,49 @@ jQuery(function ($) {
                 if (id == undefined) {
                     console.log("Actor not spedified by Actor id");
                 }
-                svgNode = createCircle({
+                this.svgNode = createCircle({
                     x: 50, y: 50, r: 20, fill: this.color
                 });
-                ActorCanvas.appendChild(svgNode);
+                this.containerWidth = Math.floor(vm.width * (1- 2 * this.containerInner));
+                this.containerHeight = Math.floor(vm.height *  (1- 2 * this.containerInner));
+                ActorCanvas.appendChild(this.svgNode);
+                this.x = Math.floor(Math.random() * 100);
+                this.y = Math.floor(Math.random() * 100);
             },
             draw: function () {
-                moveSVGCircle(svgNode, this.x, this.y);
+                moveSVGCircle(this.svgNode, this.x, this.y);
+            },
+            checkBoundary: function() {
+                this.containerX = vm.x + this.containerWidth * this.containerInner;
+                this.containerY = vm.y + this.containerHeight * this.containerInner;
+                if (this.x < this.containerX) {
+                    this.fx += (this.containerX - this.x) / 5;
+                }
+                if (this.x > this.containerWidth + this.containerX) {
+                    this.fx += - (this.x
+                                 - (this.containerWidth + this.containerX) ) / 5;
+                }
+                if (this.y < this.containerY) {
+                    this.fy += (this.containerY - this.y) / 5;
+                }
+                if (this.y > this.containerHeight + this.containerY) {
+                    this.fy += - (this.y
+                                 - (this.containerHeight + this.containerY)) / 5;
+                }
             },
             update: function () {
-                
+                this.checkBoundary();
+                this.ax = this.fx / this.m;
+                this.ay = this.fy / this.m;
+                this.vx += this.ax;
+                this.vy += this.ay;
+                this.vx -= this.vx / 10;
+                this.vy -= this.vy / 10;
+                this.x += Math.floor(this.vx);
+                this.y += Math.floor(this.vy);
+
+                this.fx = 0;
+                this.fy = 0;
             }
         };
         instance.init();
@@ -143,6 +188,8 @@ jQuery(function ($) {
             dragRelativeY : 0,
             mouseX: 0,
             mouseY: 0,
+            actorManager: null,
+            fontSize: 36,
             init : function(self) {
                 if (id == undefined) {
                     console.log("Virtual Machine not spedified by VMID");
@@ -162,15 +209,19 @@ jQuery(function ($) {
                 self.x = Math.floor(Math.random() * 300);
                 self.y = Math.floor(Math.random() * 200);
                 self.textNode
-                var t = createText({x: self.x, y: self.y, text: self.vmid});
+                var t = createText({x: self.x, y: self.y, text: self.vmid,
+                                    size: this.fontSize});
                 VMCanvas.appendChild(t);
                 self.svgTextNode = t;
+                self.actorManager = createActorManager();
             },
             draw: function () {
                 moveSVG(this.svgNode, this.x, this.y);
-                moveSVG(this.svgTextNode, this.x + 10, this.y+30);
+                moveSVG(this.svgTextNode, this.x + 10, this.y+ 5 + this.fontSize);
+                this.actorManager.draw();
             },
             update: function () {
+                this.actorManager.update();
                 if (this.dragStatus == 0) {
                     this.checkBoundary();
                     this.ax = this.fx / this.m;
@@ -229,6 +280,10 @@ jQuery(function ($) {
             onMouseUp: function(evt) {
                 self = evt.target.vm;
                 self.dragStatus = 0;
+            },
+            putActor: function(id) {
+                var a = createActor(this, id);
+                this.actorManager.put(a);
             }
         };
         instance.init(instance);
@@ -238,29 +293,46 @@ jQuery(function ($) {
     ca = createActor;
     cv = createVM;
 
-    ActorManager = {
-        actors : [],
-        addressBook : {},
-        draw : function () {
-            for (var i=0; i<actors.length; ++i) {
-                var a = actors[i];
-                a.draw();
+    function createActorManager() {
+        return {
+            actors : [],
+            addressBook : {},
+            k : 20,
+            springLength: 150,
+            draw : function () {
+                for (var i=0; i<this.actors.length; ++i) {
+                    var a = this.actors[i];
+                    a.draw();
+                }
+            },
+            update : function () {
+                for (var i=0; i<this.actors.length; ++i) {
+                    var a = this.actors[i];
+                    for (var j=0; j<this.actors.length; ++j) {
+                        if (i == j) continue;
+                        var b = this.actors[j];
+                        var dx = (b.x - a.x);
+                        var dy = (b.y - a.y);
+                        var d = Math.sqrt(dx * dx + dy * dy);
+                        var f = (d - this.springLength) / this.k;
+                        var fx = f * dx / d;
+                        var fy = f * dy / d;
+                        a.fx += fx;
+                        a.fy += fy;
+                    }
+                    a.update();
+                }
+            },
+            put : function(actor) {
+                
+                this.actors.push(actor);
+                this.addressBook[actor.aid] = actor;
+            },
+            get : function(aid) {
+                return this.addressBook[aid];
             }
-        },
-        update : function () {
-            for (var i=0; i<actors.length; ++i) {
-                var a = actors[i];
-                a.update();
-            }
-        },
-        put : function(actor) {
-            this.actors.push(actor);
-            this.addressBook[actor.aid] = actor;
-        },
-        get : function(aid) {
-            return this.addressBook[aid];
-        }
-    };
+        };
+    }
 
     VMManager = {
         vms : [],
@@ -350,6 +422,13 @@ jQuery(function ($) {
     for (var i = 0; i< 10; i++) {
         VMManager.put(createVM("vm" + i));
     }
+    v.putActor("123");
+
+    v.putActor("suzuki");
+    v.putActor("jorge");
+    v.putActor("coen");
+    v.putActor("kevin");
+    v.putActor("elisa");
 
     repeator();
 });
