@@ -1,8 +1,11 @@
 import /.at.lang.futures;
-network.online();
-deftype A;
+//network.online();
+def n := networks.createVirtualNetwork("bar");
+n.online();
 
 enableFutures(true);
+
+deftype A;
 
 when: A discovered: { |a| 
     system.println("A discovered in C");

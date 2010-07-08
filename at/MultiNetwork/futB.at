@@ -1,0 +1,47 @@
+/* with A */
+def n := networks.createVirtualNetwork("foo");
+n.online();
+
+/* with C */
+def m := networks.createVirtualNetwork("bar");
+m.online();
+
+deftype Type;
+deftype A;
+
+def createGateway(a) {
+    actor: { |a|
+        import /.at.lang.futures;
+        enableFutures(true);
+        def m := reflectOnActor();
+//        def fut;
+        m.becomeMirroredBy: (extend: m with: {
+            /*
+            pub      *      sub
+             A  <=>  B  <=>  C
+            */
+            def receive(receiver, msg) {
+                if: (`resolveWithValue != msg.selector) then: {
+                    system.println("Message from C to A");
+                    def futureFromC := msg.future;
+                    def futuredMsg := super^createMessage(msg.selector, msg.arguments, []);
+                    when: (a <+ futuredMsg) becomes: {|val|
+                        futureFromC<-resolveWithValue(val)@[/.at.lang.firstclassrefs.MetaMessage,
+                                                    /.at.lang.futures.OneWayMessage];
+                    }
+                } else: {
+                    system.println("Message from A to C");
+                    super^receive(receiver, msg);
+                }
+            };
+        });
+    }
+};
+
+when: A discovered: { |a|
+    system.println("A discovered");
+    def gw := createGateway(a);
+    export: gw as: A;
+}
+
+

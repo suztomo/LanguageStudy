@@ -1,0 +1,13 @@
+//network.online();
+def n := networks.createVirtualNetwork("foo");
+n.online();
+deftype A;
+
+def a := object: {
+    def methodA() {
+        system.println("methodA invoked");
+        "Hello, future!"
+    }
+};
+
+export: a as: A;
