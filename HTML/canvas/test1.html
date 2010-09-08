@@ -1,0 +1,169 @@
+<!doctype html>
+<!--
+Canvas test
+"HTML5のcanvas入門メモ"
+http://d.hatena.ne.jp/memememomo/20100512/1273612997
+-->
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<style type="text/css">
+h1{
+  color: #fff;
+  font: normal normal 900 170%/normal sans-serif, 'Droid Sans Fallback';
+  font-size: 2em;
+}
+body {
+  background: #111;
+}
+canvas {
+   border: none;
+}
+</style>
+<script type="text/javascript">
+
+var background = '#111';
+
+var colors = [
+  'rgba(12,133,88,0.7)',
+  'rgba(255,69,51,0.6)',
+  'rgba(255,217,106,0.3)',
+  'rgba(32,71,9,0.1)'
+];
+
+var sidePointsY = [
+  {a:10,b:20},
+  {a:-10,b:10},
+  {a:-20,b:20},
+  {a:30,b:-30}
+];
+
+
+var sidePointsYBase = [
+  {a:10,b:20},
+  {a:-10,b:10},
+  {a:-20,b:20},
+  {a:30,b:-30}
+];
+
+var beziersPoints = [
+  [{x: 130, y:130}, {x: -150, y: 190}],
+  [{x: 90, y:-20}, {x: -140, y: 200}],
+  [{x: 210, y:-130}, {x: -170, y: 150}],
+  [{x: 100, y:120}, {x: -180, y: -150}]
+];
+
+var beziersPointsBase = [
+  [{x: 130, y:130}, {x: -150, y: 190}],
+  [{x: 90, y:-20}, {x: -140, y: 200}],
+  [{x: 210, y:-130}, {x: -170, y: 150}],
+  [{x: 100, y:120}, {x: -180, y: -150}]
+];
+
+var fillRotations = [
+  Math.PI / 12 * 1,
+  Math.PI / 12 * 2,
+  Math.PI / 12 * 4,
+  Math.PI / 12 * 8
+];
+
+var margin = 30;
+
+var width = 1024; //window.innerWidth;
+var height = 600; //window.innerHeight;
+var cc;
+window.onload = function() {
+   var canvas = document.getElementById('canvas');
+/*
+   canvas.style.width = width + 'px';
+   canvas.style.height = height + 'px';
+*/
+   cc = canvas.getContext('2d');
+   cc.save();
+
+   loop();
+};
+
+var multiplies = [30, 50, 10, 20];
+
+function updateBeziersPoints(rot) {
+  for (var i=0; i<beziersPoints.length; ++i) {
+     var p1 = beziersPointsBase[i % beziersPointsBase.length][0];
+     var p2 = beziersPointsBase[i % beziersPointsBase.length][1];
+     var q1 = beziersPoints[i % beziersPoints.length][0];
+     var q2 = beziersPoints[i % beziersPoints.length][1];
+     var n = 3 * multiplies[i] * Math.sin(rot);
+     var m = 3 * multiplies[i] * Math.sin(rot * 2.5);
+     q1.x = p1.x + n;
+     q1.y = p1.y + n;
+     q2.x = p2.x + m;
+     q2.y = p2.y + m;
+
+     sidePointsY[i].a = sidePointsYBase[i].a + multiplies[i] * Math.sin(rot);
+     sidePointsY[i].b = sidePointsYBase[i].b + multiplies[i] * Math.sin(rot);
+  }
+}
+
+var frameCount = 0;
+function loop() {
+  frameCount++;
+  updateBeziersPoints(Math.PI / 120 * frameCount);
+  draw();
+  setTimeout(loop, 30);
+}
+
+
+function draw() {
+   cc.clearRect(0, 0, width, height);
+   for (var i = 0; i< colors.length; ++i) {
+     cc.restore();
+     cc.beginPath();
+
+     var x1 = 0;
+     var y1 = height / 2;
+     cc.moveTo(x1 - margin, y1 + sidePointsY[i].a);
+     var x2 = width;
+     var y2 = height / 2;
+
+     var p1 = beziersPoints[i % beziersPoints.length][0];
+     var p2 = beziersPoints[i % beziersPoints.length][1];
+     var kx = p1.x;
+     var ky = p1.y;
+     var lx = p2.x;
+     var ly = p2.y;
+     cc.bezierCurveTo(x1 + kx, y1 + ky, x2 + lx, y2 + ly, x2, y2 + sidePointsY[i].b);
+
+     cc.lineTo(width + margin, height);
+     cc.lineTo(-margin, height);
+     cc.closePath();
+
+     var color1 = colors[ i % colors.length ];
+     var color2 = colors[ (i+1) % colors.length];
+     var grad = cc.createLinearGradient(width / 2, height / 3, width / 2, height * 2 / 3 );
+     grad.addColorStop(1, background);
+     grad.addColorStop(0.2, color1);
+     grad.addColorStop(0, background);
+
+     cc.fillStyle = grad;
+
+     cc.fill();
+  }
+}
+
+
+</script>
+<title>HTML5 Canvas Bezier Curve Demo</title>
+</head>
+
+<body>
+
+<h1>HTML5 Canvas Bezier Curve Demo</h1>
+
+<!-- from http://www.whatwg.org/specs/web-apps/current-work/#2dcontext -->
+<canvas id="canvas" width="1024" height="600"></canvas>
+
+<!-- audio test; http://d.hatena.ne.jp/uupaa/20100411/1270985523 -->
+
+<audio src="http://pigs.sourceforge.jp/blog/20100411/demo.audio/source/Hydrate-Kenny_Beltrey.mp3" autoplay="true" />
+</body>
+</html>
