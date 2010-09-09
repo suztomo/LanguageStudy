@@ -1,0 +1,246 @@
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" 
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"> 
+<svg width="760" height="800" xmlns="http://www.w3.org/2000/svg" id="SVGRoot"
+    xmlns:ev="http://www.w3.org/2001/xml-events">
+    <text id="point" x="160" y="280" editable="none" focusable="false"
+        font-size="250" font-family="Verdana">0</text>
+    <text id="status" x="30" y="500" editable="none" focusable="false"
+        font-size="200" font-family="Verdana">Good</text>
+<!--
+    <rect id="tako"
+       rx="5" ry="5" x="300" y="300" width="50" height="50" stroke="black"
+        fill="white" onclick="rectClicked(this);">
+        <animate attributeName="height" attributeType="XML"
+                 begin="0s" dur="1s" repeatCount="1"
+                 from="0" to="50"  />
+
+        <animateColor attributeName="fill"
+           from="rgb(255,255,255)" to="rgb(12,133,88)"
+           begin="0s" dur="1s" fill="freeze" />
+        <animateColor attributeName="fill"
+           from="rgb(12,133,88)" to="rgb(255,69,51)"
+           begin="1.1s" dur="0.1s" fill="freeze" />
+    </rect>
+-->
+
+<g id="firstGroup">
+</g>
+<script type="application/ecmascript"><![CDATA[
+
+function rectClicked(rect) {
+    var parent = rect.parentElement;
+    var x = parseFloat(rect.getAttribute("x"))
+            + parseFloat(rect.getAttribute("width")) / 2;
+    var y = parseFloat(rect.getAttribute("y"))
+            + parseFloat(rect.getAttribute("height")) / 2;
+    putCircle(x, y, rectWidth / 1.8);
+    addPoint(rect.point);
+    parent.removeChild(rect);
+}
+
+function drawFrame() {
+    for (var i=0; i<4; ++i) {
+        for (var j=0; j<4; ++j) {
+            var p = {x: rectWidth*i, y:rectHeight*j};
+            positions.push(p);
+            var r = createSquare(p.x, p.y);
+            SVGRoot.appendChild(r);
+        }
+    }
+}
+
+function init() {
+    SVGRoot = document.getElementById("SVGRoot");
+    pointNode = document.getElementById("point");
+    statusNode = document.getElementById("status");
+    drawFrame();
+    updatePoint();
+    loop();
+}
+
+var count = 0;
+
+var rectWidth = 160;
+var rectHeight = 160;
+
+var SVGRoot;
+
+var SVGNS = "http://www.w3.org/2000/svg";
+
+var pointNode;
+var statusNode;
+
+var point = 10;
+
+var positions = [];
+
+function putCircle(x, y, rad) {
+    var r = document.createElementNS(SVGNS, "circle");
+    r.setAttribute("id", "testrect" + count );
+    r.setAttribute("cx", x);
+    r.setAttribute("cy", y);
+    r.setAttribute("r", rad);
+    r.setAttribute("stroke", "black");
+    r.setAttribute("fill", "white");
+
+    r.setAttribute("stroke-width", 1);
+    var removeCircle = function() {
+        r.parentElement.removeChild(r);
+    };
+    SVGRoot.appendChild(r);
+    setTimeout(removeCircle, 200);
+}
+var squareColorPhase0 = "#0F9994";
+var squareColorPhase1 = "#44CCC7";
+var squareColorPhase2 = "#EF004C";
+function putSquare(x, y) {
+    /*
+    <rect id="tako"
+       rx="5" ry="5" x="300" y="300" width="50" height="50" stroke="black"
+        fill="white" onclick="rectClicked(this);">
+    */
+    var r = createSquare(x, y);
+    r.setAttribute("onclick", "rectClicked(this)");
+    r.setAttribute("fill", squareColorPhase0);
+    r.setAttribute("rx", "5");
+    r.setAttribute("ry", "5");
+
+    var shapeAnime = createFadeInAnimation();
+    r.appendChild(shapeAnime);
+    SVGRoot.appendChild(r);
+    r.point = 0;
+    animationExpanding(r, 0);
+}
+
+function createSquare(x, y) {
+    var r = document.createElementNS(SVGNS, 'rect');
+    r.setAttribute("id", "testrect" + count );
+    count++;
+    r.setAttribute("x", "" + x);
+    r.setAttribute("y", "" + y);
+    r.setAttribute("width", "" + rectWidth);
+    r.setAttribute("height", rectHeight);
+    r.setAttribute("stroke", "black");
+    r.setAttribute("stroke-width", 5);
+    r.setAttribute("fill", "none");
+    return r;
+}
+
+function addPoint(p) {
+    point += p;
+    if (p < 1) {
+        updateStatus("Boo...", "#111");
+    } else if (p >= 3) {
+        updateStatus("Great!", squareColorPhase2);
+    } else {
+        updateStatus("Good.",  squareColorPhase0);
+    }
+    updatePoint();
+
+    if (point >= 30) {
+        alert("Congratulation!");
+        location.reload();
+    } else if (point <= 0) {
+        alert("Game Over...");
+        location.reload();
+    }
+}
+
+function updateStatus(msg, color) {
+    statusNode.removeChild(statusNode.childNodes[0]);
+    statusNode.setAttribute("fill", color);
+    statusNode.appendChild(document.createTextNode(msg));
+}
+
+function updatePoint() {
+    pointNode.removeChild(pointNode.childNodes[0]);
+    pointNode.appendChild(document.createTextNode(point));
+}
+
+var expandingDuration = 1000;
+var frameRate = 20;
+var addingHeightPerFrame = rectHeight / expandingDuration * (1000 / frameRate);
+
+function animationExpanding(target, height) {
+    target.setAttribute("height", height);
+    var t = target;
+    var h = height + addingHeightPerFrame;
+    var nextAnimation = function() {animationExpanding(t, h);};
+
+    if (height / rectHeight > 0.7) {
+       target.point = 1;
+    }
+    if (height / rectHeight > 0.9) {
+        target.setAttribute("fill", squareColorPhase1);
+        target.point = 3;
+    }
+    if (! (height > rectHeight)) {
+        setTimeout(nextAnimation, 1000 / frameRate);
+    } else if (height / rectHeight < 1.1) {
+        target.setAttribute("height", rectHeight);
+        setTimeout(nextAnimation, 1000 / frameRate);
+    } else if (height / rectHeight < 1.3) {
+        target.setAttribute("height", rectHeight);
+        target.setAttribute("fill", squareColorPhase2);
+        target.point = 1;
+        setTimeout(nextAnimation, 1000 / frameRate);
+    } else {
+        target.parentElement.removeChild(target);
+        addPoint(-1);
+    }
+}
+
+function createFadeInAnimation() {
+    /*
+        <animate attributeName="height" attributeType="XML"
+                 begin="0s" dur="1s" repeatCount="1"
+                 from="0" to="50"  />
+    */
+    var a = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+    a.setAttribute("attributeName", "height");
+    a.setAttribute("from", 0);
+    a.setAttribute("to", rectHeight);
+    a.setAttribute("dur", "1s");
+    a.setAttribute("repeatCount", 1);
+    return a;
+}
+
+function createChangingColorAnimation(before, after, from, dur) {
+    /*
+        <animateColor attributeName="fill"
+           from="rgb(255,255,255)" to="rgb(12,133,88)"
+           begin="0s" dur="1s" fill="freeze" />
+        <animateColor attributeName="fill"
+           from="rgb(12,133,88)" to="rgb(255,69,51)"
+           begin="1.1s" dur="0.1s" fill="freeze" />
+    */
+    var a = document.createElementNS("http://www.w3.org/2000/svg", "animateColor");
+    a.setAttribute("attributeName", "fill");
+    a.setAttribute("from", before);
+    a.setAttribute("to", after);
+    a.setAttribute("begin", from);
+    a.setAttribute("dur", dur);
+    a.setAttribute("fill", "freeze");
+    return a;
+}
+
+
+function draw() {
+    var p = positions[ Math.floor( Math.random() * positions.length ) ];
+    putSquare(p.x, p.y);
+}
+
+function loop() {
+    draw();
+    setTimeout(loop, 1000);
+}
+
+init();
+
+]]></script>
+<!--
+<handler type="application/ecmascript" ev:event="load">
+    init();
+</handler>
+-->
+</svg>

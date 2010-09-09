@@ -105,11 +105,13 @@ function updateBeziersPoints(rot) {
 }
 
 var frameCount = 0;
+var sum = 0.0;
 function loop() {
   frameCount++;
-  updateBeziersPoints(Math.PI / 120 * frameCount);
+  sum += Math.PI / 200;
+  updateBeziersPoints(sum);
   draw();
-  setTimeout(loop, 30);
+  setTimeout(loop, 50);
 }
 
 
