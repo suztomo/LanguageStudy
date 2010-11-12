@@ -1,6 +1,7 @@
 network.online();
 deftype Type;
 deftype A;
+deftype B;
 
 def createGateway(a) {
     actor: { |a|
@@ -34,7 +35,8 @@ def createGateway(a) {
 when: A discovered: { |a|
     system.println("A discovered");
     def gw := createGateway(a);
-    export: gw as: A;
+    export: gw as: B;
+    system.println("Gateway actor exported");
 }
 
 
