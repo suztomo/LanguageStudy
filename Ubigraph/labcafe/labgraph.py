@@ -150,7 +150,7 @@ def add_node(n):
     else:
         print("%d does not have from" % id)
     G.set_vertex_attribute(id, 'color', colors[n['attr1']])
-    G.set_vertex_attribute(id, 'label', str(id))
+    G.set_vertex_attribute(id, 'label', "suzuki")
     if not id in node_sizes:
         node_sizes[id] = 1.0
     G.set_vertex_attribute(id, 'size', str(node_sizes[id]))

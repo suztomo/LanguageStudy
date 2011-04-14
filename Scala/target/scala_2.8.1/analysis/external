@@ -1,0 +1,7 @@
+#External Dependencies
+#Thu Apr 14 20:58:48 JST 2011
+/System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Classes/jsse.jar=src/main/scala/IrcClient.scala
+/Users/suztomo/Documents/LanguageStudy/Scala/project/boot/scala-2.8.1/lib/scala-library.jar=src/main/scala/IrcClient.scala\:src/main/scala/XmppWriter.scala\:src/main/scala/Options.scala\:src/main/scala/XmppClient.scala\:src/main/scala/scoptOptions.scala\:src/main/scala/Ponta.scala\:src/main/scala/IrcWriter.scala
+/System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Classes/classes.jar=src/main/scala/IrcClient.scala\:src/main/scala/XmppWriter.scala\:src/main/scala/Options.scala\:src/main/scala/XmppClient.scala\:src/main/scala/scoptOptions.scala\:src/main/scala/Ponta.scala\:src/main/scala/IrcWriter.scala
+/Users/suztomo/Documents/LanguageStudy/Scala/lib/smack.jar=src/main/scala/XmppWriter.scala\:src/main/scala/XmppClient.scala
+/Users/suztomo/Documents/LanguageStudy/Scala/project/boot/scala-2.8.1/lib/scala-compiler.jar=src/main/scala/IrcClient.scala

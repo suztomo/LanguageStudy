@@ -1,0 +1,9 @@
+#Source Hashes
+#Thu Apr 14 20:58:48 JST 2011
+src/main/scala/Ponta.scala=e8efeb279e327a8c8c446cd5694d0a2bd6aa2ed2
+src/main/scala/IrcClient.scala=2f12b783b8380285578076724e681270a30b496f
+src/main/scala/IrcWriter.scala=061e49aea45ebabf79b41e2f757f9244e3a855df
+src/main/scala/XmppClient.scala=72eac37eb0f934f383302edb19b65eca14c9b43c
+src/main/scala/XmppWriter.scala=199567ca28a84c40315e80adb811fad5b04aa5c9
+src/main/scala/Options.scala=2152530990f5a9910403cf8533ef205c31fc1ffb
+src/main/scala/scoptOptions.scala=782314fdb3ed1762152d278b01adf6013ffc06db

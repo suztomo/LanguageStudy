@@ -1,0 +1,9 @@
+sudo keytool -storepasswd -new changeit -keystore /Library/Java/Home/lib/security/cacerts -storepass hogefuga
+
+sinaito ugokanai?
+exactly "changeit"
+
+
+to run this project, type "sbt" and "run"
+
+
