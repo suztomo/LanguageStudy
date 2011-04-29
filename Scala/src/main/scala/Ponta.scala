@@ -24,17 +24,43 @@ object Ponta {
     val xmppClient = new XmppClient(config)
     val xmppWriter:XmppWriter = xmppClient.getWriter
     val ircClient = new IrcClient(config)
+    val ircWriter:IrcWriter = ircClient.getWriter
+    val httpMessageClient = new HttpMessageClient(config)
+    config.mailToName = configReader.read("nickname.json").asInstanceOf[Map[String,String]]
     def ircMsgHandler(sender:String, channelName:String, text:String) {
-      println(sender + ": " + text)
-      xmppWriter ! Msg(sender + ": " + text)
+      val msg = sender + ":" + text
+      println(msg)
+//      xmppWriter ! XmppBroadcastMsg(sender + ": " + text)
+      httpMessageClient ! XmppBroadcastMsg(msg)
     }
-    def xmppMsgHandler(sender:String, text:String) {
-      println("Hi, xmppMsgHandler! " + text)
+    def xmppMsgHandler(sender:String, text:String, self:XmppClient) {
+      val nick = try {
+        config.mailToName(sender)
+      } catch {
+        case e:java.util.NoSuchElementException => {
+          sender.split("@", 2)(0)
+        }
+      }
+      var messageLine:String = null
+      if (sender == "<config>") {
+        ircWriter ! Notice(config.ircRoom, text)
+      } else {
+        messageLine = nick + ":" + text
+        ircWriter ! PrivMsg(config.ircRoom, messageLine)
+      }
+      println(messageLine)
+      httpMessageClient ! XmppBroadcastMsgFrom(messageLine, sender)
+      for (c <- self.chats) {
+        if (c != self.chat) {
+          xmppWriter ! XmppMsg(c, messageLine)
+        }
+      }
     }
     ircClient.setMsgHandler(ircMsgHandler _)
     xmppClient.setMsgHandler(xmppMsgHandler _)
     ircClient.start
     xmppClient.start
-    Thread.sleep(10000)
+    httpMessageClient.start
+//    Thread.sleep(10000)
   }
 }

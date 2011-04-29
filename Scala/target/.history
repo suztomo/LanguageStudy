@@ -36,3 +36,71 @@ compile
 run
 compile
 run
+?n
+run
+run -s localhost
+run -s localhost -p 8888
+compile
+run -s localhost -p 8888
+run -S
+run -s true
+run -S true
+run -s localhost -p 8888
+run
+run -S true
+run
+run -S
+run -S true
+compile
+run -s localhost -p 8888
+compile
+run -s localhost -p 8888
+compile
+run
+run -s localhost -p 8888
+run -S
+run -S true
+run
+run -S true
+compile
+run -S trure
+run -S true
+compile
+run -S true
+run -S
+run -S true
+copile
+compile
+run -S true
+compile
+run -S true
+compile
+run -S true
+compile
+run -S true
+run -S
+run -S true
+compile
+run -S true
+compile
+run -S true
+run
+compile
+run
+compile
+run -S true
+compile
+run -S
+run -S true
+compile
+run -S true
+compile
+run -S true
+compile
+run -S true
+compile
+run -S true
+compile
+run -S true
+compile
+run -S true

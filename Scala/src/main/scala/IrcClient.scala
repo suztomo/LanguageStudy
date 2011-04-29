@@ -4,7 +4,7 @@ import scala.actors._, Actor._
 import scala.util.matching._
 
 import javax.net.ssl.SSLSocketFactory
-import java.net.Socket
+import java.net._
 import java.io._
 import javax.net.ssl._
 import javax.security.cert._
@@ -16,45 +16,80 @@ import scala.tools.nsc.Interpreter._
  * Creates IrcWriter and reads messages from sockets
  */
 class IrcClient(var config:Options) extends Actor {
-  val sock = if (! config.ircSsl) {
-    new Socket(config.ircServer, config.ircPort)
-  } else {
-    val fc = SSLSocketFactory.getDefault
-/*
-      if (config.ignoreCertificate) {
+  var sock:Socket = null
+  var out:PrintWriter = null
+  var in:BufferedReader = null
 
-      var km:Array[KeyManager] = Array();
-      val tm:Array[TrustManager] = Array(
-        new MyX509TrustManager()
-      )
-      val sslcontext= SSLContext.getInstance("SSL");
-      sslcontext.init(km, tm, new SecureRandom());
-      sslcontext.getSocketFactory()
-    } else {
-      
-    }
-    * */
-    fc.createSocket(config.ircServer, config.ircPort).asInstanceOf[
-      javax.net.ssl.SSLSocket]
+  val ircWriter:IrcWriter = new IrcWriter
+  val pinger:IrcPinger = new IrcPinger(ircWriter, config)
+
+  def getWriter():IrcWriter = {
+    ircWriter
   }
-  val out = new PrintWriter(sock.getOutputStream(), true)
-  val in = new BufferedReader(new InputStreamReader(sock.getInputStream(), "UTF-8"))
 
-  val ircWriter = new IrcWriter(out)
-
+  def updateSocket() {
+    sock = if (! config.ircSsl) {
+      new Socket(config.ircServer, config.ircPort)
+    } else {
+      val fc = SSLSocketFactory.getDefault
+      /*
+       if (config.ignoreCertificate) {
+       
+       var km:Array[KeyManager] = Array();
+       val tm:Array[TrustManager] = Array(
+       new MyX509TrustManager()
+       )
+       val sslcontext= SSLContext.getInstance("SSL");
+       sslcontext.init(km, tm, new SecureRandom());
+       sslcontext.getSocketFactory()
+       } else {
+       
+       }
+       * */
+      fc.createSocket(config.ircServer, config.ircPort).asInstanceOf[
+        javax.net.ssl.SSLSocket]
+    }
+    val ostream = new OutputStreamWriter(sock.getOutputStream(), "UTF-8")
+    out = new PrintWriter(ostream, true)
+    in  = new BufferedReader(new InputStreamReader(sock.getInputStream(), "UTF-8"))
+    ircWriter ! UpdateOutput(out)
+  }
+  var reconnectCount:Int = 0
   def act() {
     ircWriter.start
-    ircWriter ! User("suztomobot", "test", "test", "suztomobot")
-    ircWriter ! Nick("suztomobot")
-    ircWriter ! Join("#cs2009")
+    pinger.start
+    while(reconnectCount < 10) {
+      try {
+        updateSocket()
+        ircWriter ! User("suztomobot", "test", "test", "http://cs2009irc.appspot.com/")
+        ircWriter ! Nick(config.ircNick)
+        ircWriter ! Join(config.ircRoom)
 
-    var line = in.readLine()
-    while (line != null) {
-      serverMsg(line)
-      line = in.readLine()
+        var line = in.readLine()
+        while (line != null) {
+          try {
+            serverMsg(line)
+            line = in.readLine()
+          } catch {
+            case e: IOException => {
+              println("ioexception!")
+            }
+          }
+        }
+
+      } catch {
+        case e: SocketException => {
+          println("connection refused")
+          Thread.sleep(1000)
+        }
+        case e: SSLHandshakeException => {
+          println("SSL handshake failed")
+          Thread.sleep(1000)
+        }
+      }
+      reconnectCount += 1
     }
   }
-
   /*
    * This handler should be set before concurrent execution
    */
@@ -85,12 +120,12 @@ class IrcClient(var config:Options) extends Actor {
           case "NOTICE" => {
             params match {
               case this.privMsgParamPattern(channelName, text) => {
-                println("NOTICE! :" + text)
+                println(">>> NOTICE! :" + text)
               }
             }
           }
           case _ => {
-            println("Ignoring command(1):" + cmd)
+            println(">>> Ignoring command(1):" + cmd)
           }
         }
       }
@@ -102,14 +137,23 @@ class IrcClient(var config:Options) extends Actor {
             ircWriter ! Msg("PONG " + line.subSequence(5, line.size))
           }
           case _ => {
-            println("Ignoring command(2):" + line)
+            println(">>> Ignoring command(2):" + line)
           }
         }
       }
       case _ => {
-        println("No match line: " + line)
+        println(">>> No match line: " + line)
       }
     }
   }
 }
  
+
+class IrcPinger(val ircWriter:IrcWriter, val config:Options) extends Actor {
+  def act() {
+    loop {
+      ircWriter ! Nick(config.ircNick)
+      Thread.sleep(30 * 1000)
+    }
+  }
+}

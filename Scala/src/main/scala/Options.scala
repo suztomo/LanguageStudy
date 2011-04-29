@@ -9,10 +9,13 @@ class Options(var ircServer:String = "cs2009.org",
               var xmppPort:Int = 5222,
               var xmppBot:String = "suztomobot@gmail.com",
               var xmppPass:String = "takokome",
-              var ircNick:String = "suztomobot",
-              var ircSsl:Boolean = true,
+              var ircNick:String = "p",
+              var ircSsl:Boolean = false,
+              var ircRoom:String = "#cs2009",
               var ignoreCertificate:Boolean = true,
-              var xmppRecipients:Array[String] = Array("tomotomotomo888@gmail.com")
+              var mailToName:Map[String,String] = null,
+              var xmppRecipients:Array[String] = Array("tomotomotomo888@gmail.com"),
+              var httpMessageURL:String = "http://cs2009irc.appspot.com/message"
             )
 {
 

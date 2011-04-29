@@ -1,9 +1,11 @@
 #Source Dependencies
-#Thu Apr 14 20:58:48 JST 2011
+#Fri Apr 29 16:18:25 JST 2011
 src/main/scala/Ponta.scala=
-src/main/scala/IrcClient.scala=src/main/scala/Ponta.scala
-src/main/scala/IrcWriter.scala=src/main/scala/IrcClient.scala\:src/main/scala/XmppWriter.scala\:src/main/scala/XmppClient.scala\:src/main/scala/Ponta.scala
+src/main/scala/HttpMessageClient.scala=src/main/scala/Ponta.scala
 src/main/scala/XmppClient.scala=src/main/scala/Ponta.scala
-src/main/scala/XmppWriter.scala=src/main/scala/XmppClient.scala\:src/main/scala/Ponta.scala\:src/main/scala/IrcWriter.scala
-src/main/scala/Options.scala=src/main/scala/IrcClient.scala\:src/main/scala/XmppClient.scala\:src/main/scala/Ponta.scala
+src/main/scala/XmppWriter.scala=src/main/scala/XmppClient.scala\:src/main/scala/HttpMessageClient.scala\:src/main/scala/Ponta.scala
+src/main/scala/ConfigReader.scala=src/main/scala/Ponta.scala
 src/main/scala/scoptOptions.scala=src/main/scala/Ponta.scala
+src/main/scala/IrcClient.scala=src/main/scala/Ponta.scala
+src/main/scala/IrcWriter.scala=src/main/scala/IrcClient.scala\:src/main/scala/Ponta.scala
+src/main/scala/Options.scala=src/main/scala/IrcClient.scala\:src/main/scala/XmppClient.scala\:src/main/scala/HttpMessageClient.scala\:src/main/scala/Ponta.scala
