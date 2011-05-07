@@ -2,6 +2,7 @@ package net.suztomo.ponta
 
 import scala.actors._, Actor._
 import scala.util.matching._
+import scala.actors.Actor.State._
 
 import javax.net.ssl.SSLSocketFactory
 import java.net._
@@ -15,14 +16,17 @@ import scala.tools.nsc.Interpreter._
 /*
  * Creates IrcWriter and reads messages from sockets
  */
+
+case class Stop()
+
 class IrcClient(var config:Options) extends Actor {
   var sock:Socket = null
   var out:PrintWriter = null
   var in:BufferedReader = null
-
+  var nick = config.ircNick
   val ircWriter:IrcWriter = new IrcWriter
   val pinger:IrcPinger = new IrcPinger(ircWriter, config)
-
+  def getPinger():IrcPinger = { pinger }
   def getWriter():IrcWriter = {
     ircWriter
   }
@@ -52,19 +56,25 @@ class IrcClient(var config:Options) extends Actor {
     val ostream = new OutputStreamWriter(sock.getOutputStream(), "UTF-8")
     out = new PrintWriter(ostream, true)
     in  = new BufferedReader(new InputStreamReader(sock.getInputStream(), "UTF-8"))
-    ircWriter ! UpdateOutput(out)
+    if (out == null) {
+      println("output is null! : " + sock.toString())
+    }
+    ircWriter ! UpdateOutput(out, sock)
   }
   var reconnectCount:Int = 0
+
   def act() {
     ircWriter.start
-    pinger.start
     while(reconnectCount < 10) {
       try {
         updateSocket()
-        ircWriter ! User("suztomobot", "test", "test", "http://cs2009irc.appspot.com/")
-        ircWriter ! Nick(config.ircNick)
-        ircWriter ! Join(config.ircRoom)
-
+        Thread.sleep(500)
+        ircWriter ! User(config.ircNick, "test", "test", "http://cs2009irc.appspot.com/")
+        ircWriter ! Nick(nick)
+        if (ircWriter.getState == Terminated) {
+          sock.close()
+          exit
+        }
         var line = in.readLine()
         while (line != null) {
           try {
@@ -73,29 +83,43 @@ class IrcClient(var config:Options) extends Actor {
           } catch {
             case e: IOException => {
               println("ioexception!")
+              pinger ! Stop()
+              exit
             }
           }
         }
-
+        pinger ! Stop()
+        exit
       } catch {
         case e: SocketException => {
-          println("connection refused")
-          Thread.sleep(1000)
+          println("connection refused: " + e.toString)
+          Thread.sleep(3000)
         }
         case e: SSLHandshakeException => {
-          println("SSL handshake failed")
-          Thread.sleep(1000)
+          println("SSL handshake failed" + e.toString)
+          Thread.sleep(10000)
         }
       }
       reconnectCount += 1
+      println("Reconnecting...(%d)".format(reconnectCount))
     }
+    println("too many fails")
+    pinger ! Stop()
+    exit
   }
   /*
    * This handler should be set before concurrent execution
    */
-  var privMsgHandler:(String, String, String) => Unit = null
+  var privMsgHandler:(String, String, String) => Unit = {
+    (a, b, c) => Unit
+  }
   def setMsgHandler(handler:(String, String, String) => Unit) {
     privMsgHandler = handler
+  }
+
+  def afterNickAccepted() {
+    ircWriter ! Join(config.ircRoom)
+    pinger.start
   }
 
   var ircCommandPattern: Regex = ":(.+? )(.+?) (.+)?".r
@@ -124,6 +148,20 @@ class IrcClient(var config:Options) extends Actor {
               }
             }
           }
+          case "001" => {
+            afterNickAccepted()
+          }
+          case "432" => {
+            val r = "[^0-9a-zA-Z{}]".r
+            nick = r.replaceAllIn(nick, "-")
+            config.ircNick = nick
+            ircWriter ! Nick(nick)
+          }
+          case "433" => { // ERR_ERRONEUSNICKNAME
+            nick = nick + '_'
+            config.ircNick = nick
+            ircWriter ! Nick(nick)
+          }
           case _ => {
             println(">>> Ignoring command(1):" + cmd)
           }
@@ -147,13 +185,20 @@ class IrcClient(var config:Options) extends Actor {
     }
   }
 }
- 
+
 
 class IrcPinger(val ircWriter:IrcWriter, val config:Options) extends Actor {
   def act() {
     loop {
-      ircWriter ! Nick(config.ircNick)
-      Thread.sleep(30 * 1000)
+      reactWithin(30 * 1000) {
+        case TIMEOUT => {
+          ircWriter ! Nick(config.ircNick)
+          Thread.sleep(30 * 1000)
+        }
+        case Stop() => {
+          exit
+        }
+      }
     }
   }
 }

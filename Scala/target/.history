@@ -104,3 +104,23 @@ compile
 run -S true
 compile
 run -S true
+package
+reload
+update
+proguard
+reload
+proguard
+update
+proguard
+run -S true
+package
+compile
+package
+compile
+run
+run 
+run
+package
+run
+compile
+run

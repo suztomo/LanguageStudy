@@ -1,11 +1,11 @@
 #Source Hashes
-#Fri Apr 29 16:18:25 JST 2011
-src/main/scala/Ponta.scala=fe7da6d0160496036fe1d4d53cf481a28adeea00
-src/main/scala/HttpMessageClient.scala=8491d0808b9a7f723f2ed8fd00532959893e2693
+#Sat May 07 17:33:00 JST 2011
+src/main/scala/Ponta.scala=22e19bc696acd63158587f901e4195a46cb91fbb
+src/main/scala/HttpMessageClient.scala=56b1422360feb5ad5b616995fe8d181fc7a7e4c7
 src/main/scala/XmppClient.scala=a6fa5bdb13013dbe757e29657afee02fd70155b3
 src/main/scala/XmppWriter.scala=1c2b468e24901122693f402aeb4624d907dbba2d
 src/main/scala/ConfigReader.scala=311e610e3a19a53d78ad35f3fef863a6d3f2847a
 src/main/scala/scoptOptions.scala=782314fdb3ed1762152d278b01adf6013ffc06db
-src/main/scala/IrcClient.scala=008c55300c56ea6368007c8b4cdb479d02fd3371
-src/main/scala/IrcWriter.scala=7de19ce9a42f87ef232522b34759a8a21185b9c9
-src/main/scala/Options.scala=c16b3f23653d30fb7286a16bf8f6916342c52e00
+src/main/scala/IrcClient.scala=9ec443bf4d91d1e66f17c96f8b2a0b9ebc7e0ec1
+src/main/scala/IrcWriter.scala=0e81e49984317a1d710d64b66903044564a63bcd
+src/main/scala/Options.scala=dc1e6eb6b16f0bc197b8aa1848d92ca9758f9594

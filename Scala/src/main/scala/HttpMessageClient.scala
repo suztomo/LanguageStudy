@@ -20,7 +20,6 @@ import java.io.{BufferedReader,InputStreamReader}
 class HttpMessageClient(var config:Options) extends Actor {
   val client = new DefaultHttpClient
   def sendPost(message:String, sender:String = null) {
-    println("Hello httpmessageclient")
     val post = new HttpPost(config.httpMessageURL)
     post.addHeader("Content-Type", "application/x-www-form-urlencoded")
     var parameters:ArrayList[NameValuePair] = new ArrayList[NameValuePair];
@@ -40,7 +39,6 @@ class HttpMessageClient(var config:Options) extends Actor {
     while({line=input.readLine; line != null}) {
       println("HTTP: " + line)
     }
-    println("after post")
   }
   def act() {
     loop{
