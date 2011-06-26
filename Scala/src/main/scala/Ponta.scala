@@ -1,10 +1,13 @@
 package net.suztomo.ponta
 
 import scopt._
+import java.util.{Date}
+
 
 object Ponta {
   val VERSION = "0.1"
   def main(args: Array[String]) {
+    System.setProperty("actors.enableForkJoin", "false")
     val config = new Options()
     val parser = new OptionParser {
       opt("s", "server", "server name", {v: String => config.ircServer = v})
@@ -43,10 +46,12 @@ object Ponta {
       )
       senderEmail match {
         case Some(email) => {
+          logger.log("sending to httpMessageClient: " + msg)
           httpMessageClient ! XmppBroadcastMsgFrom(msg, email)
         }
         case None => {
-          httpMessageClient ! XmppBroadcastMsg(msg)
+          logger.log("sending to httpMessageClient2 : " + msg)
+          httpMessageClient ! XmppBroadcastMsgFrom(msg, nickname)
         }
       }
     }
@@ -63,6 +68,7 @@ object Ponta {
     }
     def xmppMsgHandler(sender:String, text:String, self:XmppClient) {
       var messageLine:String = null
+      logger.log("xmppMsgHandler:" + sender + ", " + text)
       sender match {
         case "<config>" => {
 //          ircWriter ! Notice(config.ircRoom, text)
@@ -71,13 +77,13 @@ object Ponta {
           val senderMail = text
           mailToIrcClient.get(senderMail) match {
             case Some(_) => {
-              println("ingoring existing client")
+              logger.log("ingoring existing client")
             }
             case None => {
               val n = getNick(senderMail)
               val o = new Options(ircNick = n)
               val ic = new IrcClient(o)
-              println("created ircClient for " + senderMail)
+              logger.log("created ircClient for " + senderMail)
               mailToIrcClient += senderMail -> ic
               ic.start
             }
@@ -94,7 +100,7 @@ object Ponta {
               mailToIrcClient -= senderMail
             }
             case None => {
-              println("Invalid email when part: " + senderMail)
+              logger.log("Invalid email when part: " + senderMail)
             }
           }
         }
@@ -108,7 +114,7 @@ object Ponta {
             case None => {
               val o = new Options(ircNick = nick)
               val ic = new IrcClient(o)
-              println("created (existing) ircClient for " + sender)
+              logger.log("created ircClient for " + sender)
               mailToIrcClient += sender -> ic
               ic.start
               val iw = ic.getWriter
@@ -137,5 +143,19 @@ object Ponta {
     xmppClient.start
     httpMessageClient.start
 //    Thread.sleep(10000)
+  }
+}
+
+object ircConnectionTimer {
+  var d:Long =  0
+  def passed():Boolean = {
+    logger.log("answering" + d)
+    val n = System.currentTimeMillis()
+    if (n - d > 1000*10) {
+      d = n
+      true
+    } else {
+      false
+    }
   }
 }

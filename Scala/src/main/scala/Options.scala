@@ -1,5 +1,7 @@
 package net.suztomo.ponta
 
+import java.util.Date
+
 class EmptyIrcHost extends Throwable
 
 @serializable
@@ -19,4 +21,12 @@ class Options(var ircServer:String = "cs2009.org",
             )
 {
 
+}
+
+object logger {
+  def log(o:Object) {
+    val d = new Date();
+    print(d.toString + ":")
+    println(o);
+  }
 }

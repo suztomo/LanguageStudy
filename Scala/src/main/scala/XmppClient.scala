@@ -71,7 +71,6 @@ class XmppClient(var config:Options) extends Actor {
       val packet: Packet = collector.nextResult();
       if(packet.isInstanceOf[Message]) {
         val msg: Message = packet.asInstanceOf[Message]
-        println("Packet body received: " + msg.getBody())
         val body_sender =  msg.getBody().split(":", 2)
         val body = body_sender(1)
         val sender = body_sender(0)

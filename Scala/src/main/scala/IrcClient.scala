@@ -12,6 +12,7 @@ import javax.security.cert._
 import java.security._
 
 import scala.tools.nsc.Interpreter._
+import scala.util.Random
 
 /*
  * Creates IrcWriter and reads messages from sockets
@@ -30,6 +31,7 @@ class IrcClient(var config:Options) extends Actor {
   def getWriter():IrcWriter = {
     ircWriter
   }
+  var rand_generator = new Random(config.ircNick.length)
 
   def updateSocket() {
     sock = if (! config.ircSsl) {
@@ -59,37 +61,34 @@ class IrcClient(var config:Options) extends Actor {
     if (out == null) {
       println("output is null! : " + sock.toString())
     }
-    ircWriter ! UpdateOutput(out, sock)
   }
   var reconnectCount:Int = 0
 
   def act() {
     ircWriter.start
-    while(reconnectCount < 10) {
+    while(reconnectCount < 100) {
       try {
+        log("asking ircConnectionTimer")
+        while(! ircConnectionTimer.passed()) {
+          log("rejected")
+          Thread.sleep(3000 + rand_generator.nextInt(5000))
+        }
+        log("accepted")
         updateSocket()
-        Thread.sleep(500)
-        ircWriter ! User(config.ircNick, "test", "test", "http://cs2009irc.appspot.com/")
-        ircWriter ! Nick(nick)
+        log("updated socket")
+
         if (ircWriter.getState == Terminated) {
           sock.close()
           exit
-        }
-        var line = in.readLine()
-        while (line != null) {
-          try {
+        } else {
+          var line = in.readLine()
+          ircWriter ! UpdateOutput(out, sock)
+          while (line != null) {
             serverMsg(line)
             line = in.readLine()
-          } catch {
-            case e: IOException => {
-              println("ioexception!")
-              pinger ! Stop()
-              exit
-            }
           }
+          log("Closed socket normally. It will reconnect the server")
         }
-        pinger ! Stop()
-        exit
       } catch {
         case e: SocketException => {
           println("connection refused: " + e.toString)
@@ -99,13 +98,15 @@ class IrcClient(var config:Options) extends Actor {
           println("SSL handshake failed" + e.toString)
           Thread.sleep(10000)
         }
+        case e: IOException => {
+          println("ioexception!")
+        }
       }
       reconnectCount += 1
       println("Reconnecting...(%d)".format(reconnectCount))
     }
     println("too many fails")
     pinger ! Stop()
-    exit
   }
   /*
    * This handler should be set before concurrent execution
@@ -119,6 +120,7 @@ class IrcClient(var config:Options) extends Actor {
 
   def afterNickAccepted() {
     ircWriter ! Join(config.ircRoom)
+    ircWriter ! OutputBufferOk()
     pinger.start
   }
 
@@ -126,10 +128,18 @@ class IrcClient(var config:Options) extends Actor {
   var prefixPattern: Regex = "(.+?)!(.+?)".r
   var ircServerCommandPattern: Regex = "(.+?) (.+)?".r
   var privMsgParamPattern: Regex = "(.+?) :(.+)".r
+  var foundYourHostnamePattern: Regex = ".*Found your hostname.*".r
+  var connectedSecurelyPattern: Regex = ".*Connected securely.*".r
+
+  def log(str:Object) {
+    logger.log(nick + ":" + str.toString)
+  }
+
   def serverMsg(lineRow:String) {
     // :suztomo_!~suztomo@pw126213193203.39.tik.panda-world.ne.jp PRIVMSG #cs2009 :test
 
     val line = lineRow //new String(lineRow.getBytes(encoding), encoding);
+    log(line)
     line match {
       case this.ircCommandPattern(prefix, cmd, params) => {
         cmd match {
@@ -137,14 +147,22 @@ class IrcClient(var config:Options) extends Actor {
             params match {
               case this.privMsgParamPattern(channelName, text) => {
                 val this.prefixPattern(nick, detailInfo) = prefix
+                log("invoking privmsghandler")
                 privMsgHandler(nick, channelName, text)
               }
             }
           }
           case "NOTICE" => {
+
+
             params match {
+              case this.connectedSecurelyPattern() => {
+              }
+              case this.foundYourHostnamePattern() => {
+                ircWriter ! Nick(nick)
+                ircWriter ! User(config.ircNick, "0", "*", "http://cs2009irc.appspot.com/")
+              }
               case this.privMsgParamPattern(channelName, text) => {
-                println(">>> NOTICE! :" + text)
               }
             }
           }
@@ -163,7 +181,7 @@ class IrcClient(var config:Options) extends Actor {
             ircWriter ! Nick(nick)
           }
           case _ => {
-            println(">>> Ignoring command(1):" + cmd)
+//            println(">>> Ignoring command(1):" + cmd)
           }
         }
       }
@@ -175,7 +193,7 @@ class IrcClient(var config:Options) extends Actor {
             ircWriter ! Msg("PONG " + line.subSequence(5, line.size))
           }
           case _ => {
-            println(">>> Ignoring command(2):" + line)
+//            println(">>> Ignoring command(2):" + line)
           }
         }
       }

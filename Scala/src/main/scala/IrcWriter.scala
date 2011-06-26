@@ -14,6 +14,7 @@ case class Part(channel : String)
 case class Nick(nickname:String)
 case class User(username:String, hostname:String, servername:String, realname:String)
 case class Disconnect()
+case class OutputBufferOk()
 
 /*
  * Sends message to IRC connection
@@ -22,13 +23,14 @@ case class Disconnect()
 class IrcWriter() extends Actor {
   var out:PrintWriter = null
   var socket:Socket = null
+  var outputBufferOpen = false
   def write(line:String) {
     if (out == null) {
-      println("output is not initialized. discarding: " + line)
+      logger.log("output is not initialized. discarding: " + line)
       return
     }
-    out.println(line)
-    println("<<< " + line)
+    out.print(line + "\r\n")
+    out.flush() // autoflush = true ?
   }
 
   def act() {
@@ -38,12 +40,22 @@ class IrcWriter() extends Actor {
           out = output
           socket = sock
         }
+        case OutputBufferOk() => {
+          outputBufferOpen = true
+        }
+        
         case Msg(line) => {
           /* general messages */
           write(line)
         }
         case PrivMsg(channel, text) => {
-          write("PRIVMSG " + channel + " :" + text)
+          if (! outputBufferOpen) {
+            logger.log("postponing a message:" + text)
+            Thread.sleep(3000)
+            this ! PrivMsg(channel, text)
+          } else {
+            write("PRIVMSG " + channel + " :" + text)
+          }
         }
         case Notice(channel, text) => {
           write("NOTICE " + channel + " :" + text)
