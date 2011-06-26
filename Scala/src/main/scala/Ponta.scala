@@ -151,7 +151,7 @@ object ircConnectionTimer {
   def passed():Boolean = {
     logger.log("answering" + d)
     val n = System.currentTimeMillis()
-    if (n - d > 1000*10) {
+    if (n - d > 1000*20) {
       d = n
       true
     } else {
