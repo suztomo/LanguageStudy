@@ -10,6 +10,7 @@ instance Yesod HelloWorld where approot _ = ""
 getHomeR :: GHandler sub HelloWorld RepHtml
 getHomeR = defaultLayout [$hamlet|こんにちわ、世界!|]
 getNameR :: String -> Int -> GHandler sub HelloWorld RepHtml
+-- This provides /user/suztomo/24
 getNameR name age = defaultLayout [$hamlet|こんにちわ、#{name} (#{age})さん|]
 
 main :: IO ()                                  
