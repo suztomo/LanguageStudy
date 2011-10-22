@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import System.IO  
