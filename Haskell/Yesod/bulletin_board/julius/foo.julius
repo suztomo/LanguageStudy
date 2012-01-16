@@ -1,0 +1,11 @@
+$(document).ready(function() {
+/*
+ $("h1").after("<p><a href='#' id='mylink'>Never click me</a></p>");
+$("#mylink").click(function() {
+    alert("You clicked me!!! How dare you (#{name})! ");
+    return false;
+});
+*/
+});
+
+

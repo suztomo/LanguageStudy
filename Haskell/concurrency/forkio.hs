@@ -9,9 +9,9 @@ tarai x y z
                        (tarai (z-1) x y)
 main :: IO ()
 main = do
-  aid <- forkOS $ threadA 31
-  bid <- forkOS $ threadA 31
-  cid <- forkOS $ threadA 31
+  aid <- forkIO $ threadA 31
+  bid <- forkIO $ threadA 31
+  cid <- forkIO $ threadA 31
   threadA 31
 
 threadA :: Int -> IO ()

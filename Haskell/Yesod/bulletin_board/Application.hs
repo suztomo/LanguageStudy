@@ -1,63 +1,61 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE QuasiQuotes, TemplateHaskell, MultiParamTypeClasses,
+    OverloadedStrings, TypeFamilies, GADTs, FlexibleContexts, CPP #-}
+
 module Application
-    (  withDevelAppPort
+    ( withBulletinBoard
+    , withDevelAppPort
     ) where
 
-import Foundation
+import Import
 import Settings
+import Settings.StaticFiles (staticSite)
+
+import Yesod hiding (AppConfig, withYamlEnvironment, appEnv)
+
+import Yesod.Default.Config
+import Yesod.Default.Main
+import Yesod.Default.Handlers
+import Data.Dynamic (Dynamic, toDyn)
+#if DEVELOPMENT
+import Yesod.Logger (Logger, logBS, flushLogger)
+import Network.Wai.Middleware.RequestLogger (logHandleDev)
+#else
+import Yesod.Logger (Logger)
+import Network.Wai.Middleware.RequestLogger (logStdout)
+#endif
+import qualified Database.Persist.Base
+import Database.Persist.GenericSql (runMigration)
+
+-- Import all relevant handler modules here.
+import Import
 import BulletinBoard
 
-import Yesod
-import Yesod.Static
-import Yesod.Logger (makeLogger, flushLogger, Logger, logString, logLazyText)
-import Control.Monad.IO.Class (liftIO)
-import Control.Concurrent (forkIO, killThread)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Network.Wai.Middleware.Debug (debugHandle)
-import Data.Dynamic (Dynamic, toDyn)
-import qualified System.Posix.Signals as Signal
-
-
+-- This line actually creates our YesodSite instance. It is the second half
+-- of the call to mkYesodData which occurs in Foundation.hs. Please see
+-- the comments there for more details.
 mkYesodDispatch "BulletinBoard" resourcesBulletinBoard
 
-withBulletinBoard :: AppConfig -> Logger -> (Application -> IO a) -> IO ()
+-- This function allocates resources (such as a database connection pool),
+-- performs initialization and creates a WAI application. This is also the
+-- place to put your migrate statements to have automatic database
+-- migrations handled by Yesod.
+withBulletinBoard :: AppConfig DefaultEnv () -> Logger -> (Application -> IO ()) -> IO ()
 withBulletinBoard conf logger f = do
-    s <- static "static"
-    Settings.withConnectionPool conf $ \p -> do
---        runConnectionPool (runMigration migrateAll) p
-        let h = BulletinBoard s
-        tid <- forkIO $ toWaiApp h >>= f >> return ()
-        flag <- newEmptyMVar
-        _ <- Signal.installHandler Signal.sigINT (Signal.CatchOnce $ do
-            putStrLn "Caught an interrupt"
-            killThread tid
-            putMVar flag ()) Nothing
-        takeMVar flag
-
-
+    s <- staticSite
+    dbconf <- withYamlEnvironment "config/sqlite.yml" (appEnv conf)
+            $ either error return . Database.Persist.Base.loadConfig
+    Database.Persist.Base.withPool (dbconf :: Settings.PersistConfig) $ \p -> do
+        Database.Persist.Base.runPool dbconf (runMigration migrateAll) p
+        let h = BulletinBoard conf logger s p
+        defaultRunner (f . logWare) h
+  where
+#ifdef DEVELOPMENT
+    logWare = logHandleDev (\msg -> logBS logger msg >> flushLogger logger)
+#else
+    logWare = logStdout
+#endif
 
 -- for yesod devel
 withDevelAppPort :: Dynamic
-withDevelAppPort =
-    toDyn go
-  where
-    go :: ((Int, Application) -> IO ()) -> IO ()
-    go f = do
-        conf <- Settings.loadConfig Settings.Development
-        let port = 3000
-        logger <- makeLogger
-        logString logger $ "Devel application launched, listening on port " ++ show port
-        withBulletinBoard conf logger $ \app -> f (port, debugHandle (logHandle logger) app)
-        flushLogger logger
-      where
-        logHandle logger msg = logLazyText logger msg >> flushLogger logger
-
-main :: IO ()
-main = do
-  s <- static "static"
-  warpDebug 3000 $ BulletinBoard s
-
+withDevelAppPort = toDyn $ defaultDevelApp withBulletinBoard

@@ -29,5 +29,5 @@ main = withSqliteConn "db.sqlite" $ runSqlConn $ do
     liftIO $ print (john :: Maybe Person)
 
     people <- selectList [PersonAge >. 25, PersonAge <=. 30] []
-    delete janeId¯
+    delete janeId
     deleteWhere [BlogPostAuthorId ==. johnId]

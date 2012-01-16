@@ -6,4 +6,4 @@ tarai x y z
                        (tarai (z-1) x y)
 
 main :: IO ()
-main = putStrLn . show $ tarai  31 22 11
+main = putStrLn . show $ tarai  30 22 11

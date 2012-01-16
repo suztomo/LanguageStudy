@@ -10,12 +10,19 @@ module Foundation
     , Widget
     ) where
 
-import Yesod
+
+import Settings
+import Yesod hiding (AppConfig, withYamlEnvironment, appEnv)
+
+import Yesod.Default.Config
+import Yesod.Default.Main
+
 import Yesod.Static (Static, base64md5, StaticRoute(..))
 import Yesod.Logger (Logger, logLazyText)
 import System.Directory
 import qualified Data.ByteString.Lazy as L
 import Database.Persist.GenericSql
+import Database.Persist.Base
 import Data.Maybe (isJust)
 import Control.Monad (join, unless)
 import Network.Mail.Mime
@@ -27,7 +34,10 @@ import Text.Hamlet (shamlet)
 import Text.Shakespeare.Text (stext)
 
 data BulletinBoard = BulletinBoard {
-      bbStatic :: Static
+      conf :: AppConfig DefaultEnv (),
+      logger :: Logger,
+      bbStatic :: Static,
+      pool :: PersistConfigPool Settings.PersistConfig
     }
 
 mkYesodData "BulletinBoard" [parseRoutes|

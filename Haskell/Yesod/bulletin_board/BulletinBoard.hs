@@ -1,5 +1,5 @@
 {-# LANGUAGE QuasiQuotes, TemplateHaskell, MultiParamTypeClasses,
-    OverloadedStrings, TypeFamilies, GADTs #-}
+    OverloadedStrings, TypeFamilies, GADTs, FlexibleContexts #-}
 module BulletinBoard where
 
 import Yesod
@@ -26,7 +26,6 @@ import qualified Data.ByteString.Char8 as C8
 import qualified Data.Digest.Pure.SHA as SHA
 import qualified Data.ByteString.Lazy as BL
 import qualified Codec.Binary.UTF8.String as U8
-import qualified System.Posix.Signals as Signal
 import Network.Wai.Middleware.Debug (debugHandle)
 
 
@@ -96,10 +95,7 @@ instance Yesod BulletinBoard where
           </ul>
           <p id="user_info" # class="pull-right">
           </p>
-        </div>
-      </div>
-    </div>
-    <div class="container">
+          <div class="container">
       <div class="content">
         \^{pageBody content}
       </div>

@@ -14,7 +14,7 @@ rstrip = reverse . dropWhile isSpace . reverse
 
 main :: IO ()
 main = withSocketsDo $ do
-         let port = 8000
+         let port = 8008
          soc <- listenOn $ PortNumber port
          putStrLn $ "start server, listening on: " ++ show port
          acceptLoop soc `finally` sClose soc
@@ -37,7 +37,7 @@ replyRequest = return . concat . suffixes -- (concat . suffixes $ line) --concat
 reply :: [String] -> IO String
 reply l = do
   putStrLn $ concat l
-  return "HTTP/1.1 200 OK\nDate: Thu, 03 Nov 2011 06:24:54 GMT\n\nHello, HTTP Server"
+           return "HTTP/1.1 200 OK\nDate: Thu, 03 Nov 2011 06:24:54 GMT\n\nHello, HTTP Server"
 
 readHeaders :: Handle -> IO [String]
 readHeaders hd = readUntilTwoNewLines hd
