@@ -94,11 +94,10 @@ instance Yesod BulletinBoard where
             <li><a href="#contact">Contact</a></li>
           </ul>
           <p id="user_info" # class="pull-right">
-          </p>
-          <div class="container">
+
+    <div class="container">
       <div class="content">
         \^{pageBody content}
-      </div>
       <footer>
         <p>&copy; Suztomo 2011
 
