@@ -9,7 +9,8 @@ import Settings
 import Foundation
 
 import Yesod.Form.Jquery
-import Yesod.Form
+--import Yesod.Form
+--import MForm
 import Yesod.Logger (makeLogger, flushLogger, Logger, logString, logLazyText)
 import Data.Time
 import qualified Data.Text as T
@@ -26,7 +27,7 @@ import qualified Data.ByteString.Char8 as C8
 import qualified Data.Digest.Pure.SHA as SHA
 import qualified Data.ByteString.Lazy as BL
 import qualified Codec.Binary.UTF8.String as U8
-import Network.Wai.Middleware.Debug (debugHandle)
+import Network.Wai.Middleware.RequestLogger (logHandle)
 
 
 -- import Text.Julius
@@ -126,7 +127,7 @@ data UserAuth = UserAuth {
 --postForm p = do
 --  renderDivs $ Post <$> areq textareaField "" Nothing
 
-postForm :: Maybe Post -> Html -> Form BulletinBoard BulletinBoard (FormResult Post, Widget)
+postForm :: Maybe Post -> Html -> MForm BulletinBoard BulletinBoard (FormResult Post, Widget)
 postForm p extra = do
   (textRes, textView) <- mreq textareaField "" Nothing
   let rs = Post <$> textRes
@@ -145,7 +146,7 @@ postForm p extra = do
 
   
 
-userForm :: Html -> Form BulletinBoard BulletinBoard (FormResult User, Widget)
+userForm :: Html -> MForm BulletinBoard BulletinBoard (FormResult User, Widget)
 userForm = renderDivs $ User
            <$> areq textField "Name" Nothing
            <*> areq textField "User ID" Nothing
@@ -167,7 +168,7 @@ showUserAuthForm widget enctype = defaultLayout [whamlet|
     Register
 |]
 
-userAuthForm :: Html -> Form BulletinBoard BulletinBoard (FormResult UserAuth,
+userAuthForm :: Html -> MForm BulletinBoard BulletinBoard (FormResult UserAuth,
                                                                      Widget)
 userAuthForm = renderDivs $ UserAuth
                <$> areq textField "User ID" Nothing
