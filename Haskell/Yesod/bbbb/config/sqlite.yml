@@ -1,0 +1,20 @@
+Default: &defaults
+  database: bbbb.sqlite3
+  poolsize: 10
+
+Development:
+  <<: *defaults
+
+Test:
+  database: bbbb_test.sqlite3
+  <<: *defaults
+
+Staging:
+  database: bbbb_staging.sqlite3
+  poolsize: 100
+  <<: *defaults
+
+Production:
+  database: bbbb_production.sqlite3
+  poolsize: 100
+  <<: *defaults
