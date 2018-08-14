@@ -1,0 +1,10 @@
+[package]
+name = "perceptron"
+version = "0.1.0"
+authors = ["suztomo <suztomo+github@gmail.com>"]
+
+[dependencies]
+ndarray = "0.11.2"
+rand = "0.5.5"
+
+# ndarray-linalg = { version = "0.9", features = ["openblas"] }
