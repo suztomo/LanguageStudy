@@ -70,8 +70,9 @@ fn main() {
         // It looks like w doesn't needs to be horizontal
         let res = x.dot(&w);
         //println!("v {:?} dot w {:?} = {}", &x, &w, res);
-        let err = expected - unit_step(res);
+        let err = *expected - res;// unit_step(res);
         errors.push(err);
+
         // ArrayView doesn't allow me to use '-' operation
         // Should I avoid ArrayView?
         //let w_mod = w.sub(&x);
