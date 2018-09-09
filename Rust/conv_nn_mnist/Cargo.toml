@@ -1,0 +1,13 @@
+[package]
+name = "conv_nn_mnist"
+version = "0.1.0"
+authors = ["suztomo <suztomo+github@gmail.com>"]
+
+[dependencies]
+ndarray = "0.12.0"
+ndarray-rand = "0.8.0"
+rand = "0.5.5"
+mindtree_utils = "0.4.0"
+csv = "1.0"
+lazy_static = "1.1.0"
+ansi_term = "0.11"
