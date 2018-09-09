@@ -43,17 +43,10 @@ fn sigmoid_derivative(x: f32) -> f32 {
     t * (1.0 - t)
 }
 
-fn bad_sigmoid_derivative(x: f32) -> f32 {
-    // https://iamtrask.github.io/2015/07/12/basic-python-network/
-    x * (1.0 - x)
-}
-
 
 const ACTIVATION:&Fn(f32) -> f32 = &sigmoid;
 const ACTIVATION_PRIME: &Fn(f32) -> f32 = &sigmoid_derivative;
-// This works with back_prop_
-//const ACTIVATION:&Fn(f32) -> f32 = &sigmoid;
-//const ACTIVATION_PRIME: &Fn(f32) -> f32 = &bad_sigmoid_derivative;
+// Tanh doesn't work as the range is -1 to + 1
 //const ACTIVATION:&Fn(f32) -> f32 = &tanh;
 //const ACTIVATION_PRIME: &Fn(f32) -> f32 = &tanh_prime;
 
@@ -282,7 +275,7 @@ impl MnistRecord {
             v.push(Style::default().paint("\n"));
         }
         // print!("Label {}:\n{}", self.label, s);
-        print!("Image\n{}",  ANSIStrings(&v));
+        print!("Image:\n{}",  ANSIStrings(&v));
     }
 }
 
@@ -291,11 +284,36 @@ impl MnistRecord {
 fn main() {
     let label_table = LabelTable::new();
     let file_path = "mnist_train.csv";
+    let file_path_test = "mnist_test.csv";
+    let file_test = File::open(file_path_test).unwrap();
     let file = File::open(file_path).unwrap();
-    let mut rdr = csv::Reader::from_reader(file);
+    let mut rdr = csv::ReaderBuilder::new().has_headers(false).from_reader(file);
+    let mut rdr_test = csv::ReaderBuilder::new().has_headers(false).from_reader(file_test);
     let mut mnist_records:Vec<MnistRecord> = Vec::new();
+    let mut mnist_records_test:Vec<MnistRecord> = Vec::new();
     let mut nn = NeuralNetwork::new(100);
     let before_record = Instant::now();
+    for result in rdr_test.records() {
+        let mut array: [Grayscale; IMG_W_SIZE * IMG_W_SIZE] = [0.; IMG_W_SIZE * IMG_W_SIZE];
+        let record = result.unwrap();
+        assert!(record.len() == 1+28*28);
+        for i in 1..(IMG_W_SIZE * IMG_W_SIZE) {
+            let v: f32 = record[i+1].parse().unwrap();
+            let vv: f32 = v / MNIST_DOT_MAX;
+            array[i] = vv;
+            debug_assert!(vv >= 0. && vv <= 1., "MNIST dot must be between 0 - 255");
+        }
+        let label:i32 = record[0].parse().unwrap();
+        let vv:Vec<f32> = array.to_vec();
+//        let dots_array1: Array1<f32> = Array1::from_vec(vv);
+        let dots_array2: Array2<f32> = Array2::from_shape_vec((1, 784), vv).unwrap();
+        mnist_records_test.push(MnistRecord{
+            label,
+            dots: array,
+            dots_array: dots_array2
+        });
+    }
+    println!("Read {} MNIST test records in {} secs", mnist_records_test.len(), before_record.elapsed().as_secs());
     for result in rdr.records() {
         let mut array: [Grayscale; IMG_W_SIZE * IMG_W_SIZE] = [0.; IMG_W_SIZE * IMG_W_SIZE];
         let record = result.unwrap();
@@ -324,7 +342,7 @@ fn main() {
     println!("Read {} MNIST records in {} secs", mnist_records.len(), before_record.elapsed().as_secs());
     println!("Starting training of {} hidden layer", nn.hidden_layer_size);
     let before_training = Instant::now();
-    let epoch = 10;
+    let epoch = 30;
     for i in 0..epoch {
         let mut total_count = 0;
         let mut correct_prediction = 0;
@@ -337,20 +355,28 @@ fn main() {
             }
             total_count += 1;
         }
+        for i in 0..3 {
+            let sample_index = thread_rng().gen_range(0, mnist_records.len());
+            let mnist_sample = &mnist_records[sample_index as usize];
+            mnist_sample.print();
+            let predicted_label = nn.feed_forward(&mnist_sample.dots_array);
+            println!("Predicted: {}\n--------------------------------", predicted_label);
+        }
         println!("Finished epoch {}. Prediction rate: {}",
             i,  (correct_prediction as f32) / (total_count as f32));
     }
     println!("Finished training in {} secs", before_training.elapsed().as_secs());
-
-    for i in 0..10 {
-        let sample_index = thread_rng().gen_range(0, mnist_records.len());
-        let mnist = &mnist_records[sample_index as usize];
-        mnist.print();
+    let mut test_count = 0;
+    let mut test_correct_prediction = 0;
+    for mnist in mnist_records_test.iter() {
         let predicted_label = nn.feed_forward(&mnist.dots_array);
-        println!("Predicted: {}\n--------------------------------", predicted_label);
-        let ten_millis = time::Duration::from_millis(1000);
-        thread::sleep(ten_millis);        
+        if predicted_label == mnist.label {
+            test_correct_prediction += 1;
+        }
+        test_count += 1;
     }
+    println!("Test result: {} of {} test cases",
+     (test_correct_prediction as f32) / (test_count as f32), test_count);
 }
 
 
@@ -371,7 +397,9 @@ fn backprop_test() {
     let label_table = LabelTable::new();
     let file_path = "mnist_train.csv";
     let file = File::open(file_path).unwrap();
-    let mut rdr = csv::Reader::from_reader(file);
+    let mnist_csv_reader_builder = csv::ReaderBuilder::new().has_headers(false);
+    let mut rdr = mnist_csv_reader_builder.from_reader(file);
+
     let mut mnist_records:Vec<MnistRecord> = Vec::new();
     let mut nn = NeuralNetwork::new(100);
     for result in rdr.records() {
