@@ -1,5 +1,5 @@
 // Implementation of Convolutional Neural Network for MNIST
-// The implementation is from 
+// The implementation is from
 //   ゼロから作るDeep Learning ――Pythonで学ぶディープラーニングの理論と実装
 // Sample Code https://github.com/oreilly-japan/deep-learning-from-scratch in Python
 extern crate csv;
@@ -52,7 +52,6 @@ const IMG_W_SIZE: usize = 28;
 
 const MNIST_DOT_MAX: f32 = 255.;
 
-
 // The implementaiton of the book leverages the layer-based implementation
 // In Python, the simple RELU in the book https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py
 // may just be enough as Python is not statically typed language. However
@@ -62,7 +61,7 @@ const MNIST_DOT_MAX: f32 = 255.;
 
 // Looking at class Convolution, it seems input type is 4 dimensional
 // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L215
-// FN, C, FH, FW = self.W.shape. 
+// FN, C, FH, FW = self.W.shape.
 //   FN: number of filter. This matches the number of output map
 //   C:  channel size. This matches the number of input channel size
 //   FH, FW: filter height/width
@@ -88,7 +87,7 @@ trait Layer {
 
 #[derive(Debug)]
 struct Relu {
-    mask: Matrix, // 0. or 1. 
+    mask: Matrix, // 0. or 1.
 }
 impl Relu {
     pub fn new() -> Relu {
@@ -119,16 +118,35 @@ impl Layer for Relu {
     }
 }
 
-fn im2col(input: Array4<Elem>, filter_height: usize, filter_width: usize, stride: usize, pad:usize) -> Array2<Elem> {
+fn im2col(
+    input: Array4<Elem>,
+    filter_height: usize,
+    filter_width: usize,
+    stride: usize,
+    pad: usize,
+) -> Array2<Elem> {
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/util.py
     let (n_input, channel_count, input_height, input_width) = input.dim();
-    let out_h = (input_height + 2*pad - filter_height) / stride + 1;
-    let out_w = (input_width + 2*pad - filter_width) / stride + 1;
-    let col:Array6<Elem> = Array6::zeros((n_input, channel_count, filter_height, filter_width, out_h, out_w));
+    let out_h = (input_height + 2 * pad - filter_height) / stride + 1;
+    let out_w = (input_width + 2 * pad - filter_width) / stride + 1;
+    let col: Array6<Elem> = Array6::zeros((
+        n_input,
+        channel_count,
+        filter_height,
+        filter_width,
+        out_h,
+        out_w,
+    ));
     // fill the array!
     Array2::zeros((1, 1))
 }
-fn col2im(col: &Array2<Elem>, filter_height: usize, filter_width: usize, stride: usize, pad: usize) -> Array4<Elem> {
+fn col2im(
+    col: &Array2<Elem>,
+    filter_height: usize,
+    filter_width: usize,
+    stride: usize,
+    pad: usize,
+) -> Array4<Elem> {
     Array4::zeros((1, 1, 1, 1))
 }
 
@@ -144,20 +162,21 @@ struct Convolution {
 }
 
 impl Convolution {
-    pub fn new(filter_height: usize, filter_width: usize, stride: usize, pad: usize) -> Convolution {
+    pub fn new(
+        filter_height: usize,
+        filter_width: usize,
+        stride: usize,
+        pad: usize,
+    ) -> Convolution {
         let conv = Convolution {
             filter_height,
             filter_width,
             col: Array2::zeros((1, 1)),
-            weights: Array::random(
-                (IMG_H_SIZE, IMG_W_SIZE, 1, 1),
-                F32(Normal::new(0., 1.)),
-            ),
+            weights: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.))),
             d_weights: Array4::zeros((1, 1, 1, 1)),
         };
         conv
     }
-
 }
 
 impl Layer for Convolution {
@@ -171,7 +190,6 @@ impl Layer for Convolution {
         im_from_col
     }
 }
-
 
 #[derive(Debug)]
 struct NeuralNetwork<'a> {
@@ -217,7 +235,7 @@ impl<'a> NeuralNetwork<'a> {
         self.layer1_a = self.last_input.dot(&self.weight1);
         // https://docs.rs/ndarray/0.11.2/ndarray/struct.ArrayBase.html#method.mapv
         // layer1: 1 x 100
-        self.layer1 = activation_array(&self.layer1_a);// self.layer1_a.mapv(ACTIVATION);
+        self.layer1 = activation_array(&self.layer1_a); // self.layer1_a.mapv(ACTIVATION);
 
         // When the matrix size is different:
         //   'assertion failed: `(left == right)`
@@ -406,7 +424,6 @@ fn main() {
     let relu_layer = Relu::new();
     let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer];
     println!("layer array: {:?}", layer_vec.len());
-
 
     let label_table = LabelTable::new();
     let file_path = "mnist_train.csv";
