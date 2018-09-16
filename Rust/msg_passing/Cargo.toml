@@ -1,0 +1,6 @@
+[package]
+name = "msg_passing"
+version = "0.1.0"
+authors = ["suztomo <suztomo+github@gmail.com>"]
+
+[dependencies]

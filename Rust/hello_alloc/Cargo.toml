@@ -1,0 +1,7 @@
+[package]
+name = "hello_alloc"
+version = "0.1.0"
+authors = ["suztomo <suztomo+github@gmail.com>"]
+
+[dependencies]
+stats_alloc = "0.1.6"

@@ -1,0 +1,6 @@
+[package]
+name = "passing_ref"
+version = "0.1.0"
+authors = ["suztomo <suztomo+github@gmail.com>"]
+
+[dependencies]

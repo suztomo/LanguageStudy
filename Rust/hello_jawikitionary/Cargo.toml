@@ -1,0 +1,9 @@
+[package]
+name = "hello_jawikitionary"
+version = "0.1.0"
+authors = ["suztomo <suztomo+github@gmail.com>"]
+
+
+[dependencies]
+xml-rs = "0.8"
+
