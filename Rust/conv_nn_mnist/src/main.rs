@@ -176,9 +176,10 @@ fn im2col(
             // >>> a_3_4_6_6_5_12[0][0][1][3][0][0]
             // 0.0
 
+            // Slice to assign ndarray values at once.
             // https://docs.rs/ndarray/0.11.2/ndarray/struct.ArrayBase.html#slicing
-            // x.slice_mut(s![.., 2, ..]).assign(&y);
-            let img_slice = img.slice(s![.., .., y..y_max, x..x_max]);
+            // and https://docs.rs/ndarray/0.12.0/ndarray/macro.s.html
+            let img_slice = img.slice(s![.., .., y..y_max;stride, x..x_max;stride]);
             let mut col_slice_mut = col.slice_mut(s![.., .., y, x, .., ..]);
             col_slice_mut.assign(&img_slice);
         }
