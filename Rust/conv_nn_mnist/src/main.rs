@@ -26,6 +26,7 @@ use rand::{thread_rng, Rng};
 use std::string::ToString;
 // use rand::Rng;
 use ndarray::prelude::*;
+use ndarray::Ix;
 extern crate utils;
 use utils::math::sigmoid;
 
@@ -119,7 +120,7 @@ impl Layer for Relu {
 }
 
 fn im2col(
-    input: Array4<Elem>, // n_input, channel_count, input_height, input_width
+    input: &Array4<Elem>, // n_input, channel_count, input_height, input_width
     filter_height: usize,
     filter_width: usize,
     stride: usize,
@@ -209,12 +210,37 @@ fn im2col(
 }
 fn col2im(
     col: &Array2<Elem>,
+    input_shape: &[Ix; 4],
     filter_height: usize,
     filter_width: usize,
     stride: usize,
     pad: usize,
 ) -> Array4<Elem> {
-    Array4::zeros((1, 1, 1, 1))
+    let (n_input, channel_count, input_height, input_width) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
+    let out_h = (input_height + 2*pad - filter_height) / stride + 1;
+    let out_w = (input_width + 2*pad - filter_width) / stride + 1;
+    let mut col_copy = Array::zeros(col.raw_dim());
+    col_copy.assign(col);
+    // col = col.reshape(N, out_h, out_w, C, filter_h, filter_w).transpose(0, 3, 4, 5, 1, 2)
+    let reshaped_col = col_copy.into_shape((n_input, out_h, out_w, channel_count, filter_height, filter_width));
+    let transposed_col = reshaped_col.unwrap().permuted_axes([0, 3, 4, 5, 1, 2]);
+    let mut img = Array4::zeros((
+        n_input,
+        channel_count,
+        input_height + 2*pad + stride - 1, // H + 2*pad + stride - 1
+        input_width + 2*pad + stride - 1 // W + 2*pad + stride - 1
+    ));
+    for y in 0..filter_height {
+        let y_max = y + stride*out_h;
+        for x in 0..filter_width {
+            let x_max = x + stride*out_w;
+            let col_slice = transposed_col.slice(s![.., .., y, x, .., ..]);
+            // img[:, :, y:y_max:stride, x:x_max:stride] += col[:, :, y, x, :, :]
+            let mut img_slice_mut = img.slice_mut(s![.., .., y..y_max;stride, x..x_max;stride]);
+            img_slice_mut += &col_slice;
+        }
+    }
+    img
 }
 
 #[derive(Debug)]
@@ -223,6 +249,7 @@ struct Convolution {
     //   self.dW = self.dW.transpose(1, 0).reshape(FN, C, FH, FW)
     filter_height: usize,
     filter_width: usize,
+    input_shape: [Ix; 4],
     col: Array2<Elem>,
     weights: Matrix, // What's the dimension?
     d_weights: Matrix,
@@ -238,6 +265,7 @@ impl Convolution {
         let conv = Convolution {
             filter_height,
             filter_width,
+            input_shape: [0; 4],
             col: Array2::zeros((1, 1)),
             weights: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.))),
             d_weights: Array4::zeros((1, 1, 1, 1)),
@@ -250,11 +278,15 @@ impl Layer for Convolution {
     fn forward(&mut self, x: Matrix) -> Matrix {
         let out: Matrix = x.mapv(Relu::relu);
         //  (something)x(filter_height*filter_width*channel) matrix
-        self.col = im2col(x, self.filter_height, self.filter_width, 1, 0);
+        let shape = &x.shape();
+        for i in 0..self.input_shape.len() {
+            self.input_shape[i] = shape[i];
+        }
+        self.col = im2col(&x, self.filter_height, self.filter_width, 1, 0);
         out
     }
     fn backward(&mut self, dout: Matrix) -> Matrix {
-        let im_from_col = col2im(&self.col, self.filter_height, self.filter_width, 1, 0);
+        let im_from_col = col2im(&self.col, &self.input_shape, self.filter_height, self.filter_width, 1, 0);
         im_from_col
     }
 }
@@ -729,13 +761,13 @@ fn assign_test() {
 fn im2col_shape_test() {
     // n_input, channel_count, input_height, input_width
     let input2 = Array::random((1, 3, 7, 7), F32(Normal::new(0., 1.)));
-    let col2: Array2<Elem> = im2col(input2, 5, 5, 1, 0);
+    let col2: Array2<Elem> = im2col(&input2, 5, 5, 1, 0);
     assert_eq!(col2.shape(), &[1 * 3 * 3, 5 * 5 * 3]);
     let input1 = Array4::zeros((9, 3, 100, 100));
-    let col1: Array2<Elem> = im2col(input1, 50, 50, 1, 0);
+    let col1: Array2<Elem> = im2col(&input1, 50, 50, 1, 0);
     assert_eq!(col1.shape(), &[9 * 51 * 51, 50 * 50 * 3]);
     let input3 = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
-    let col3: Array2<Elem> = im2col(input3, 5, 5, 1, 0);
+    let col3: Array2<Elem> = im2col(&input3, 5, 5, 1, 0);
     assert_eq!(col3.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
 }
 
@@ -744,9 +776,18 @@ fn im2col_value_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     let a = input[[1, 2, 3, 4]];
     let input_at_0 = input[[0, 0, 0, 0]];
-    let col: Array2<Elem> = im2col(input, 5, 5, 1, 0);
+    let col: Array2<Elem> = im2col(&input, 5, 5, 1, 0);
     assert_eq!(col.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
     let b = col[[17, 57]];
     assert_eq!(col[[0, 0]], input_at_0);
     assert_eq!(b, a);
+}
+
+#[test]
+fn col2im_shape_test() {
+    let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let col: Array2<Elem> = im2col(&input, 5, 5, 1, 0);
+    assert_eq!(col.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
+    let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 0);
+    assert_eq!(img_from_col.shape(), &[10, 3, 7, 7]);
 }
