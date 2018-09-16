@@ -119,7 +119,7 @@ impl Layer for Relu {
 }
 
 fn im2col(
-    input: Array4<Elem>,
+    input: Array4<Elem>, // n_input, channel_count, input_height, input_width
     filter_height: usize,
     filter_width: usize,
     stride: usize,
@@ -129,7 +129,20 @@ fn im2col(
     let (n_input, channel_count, input_height, input_width) = input.dim();
     let out_h = (input_height + 2 * pad - filter_height) / stride + 1;
     let out_w = (input_width + 2 * pad - filter_width) / stride + 1;
-    let col: Array6<Elem> = Array6::zeros((
+    //  img = np.pad(input_data, [(0,0), (0,0), (pad, pad), (pad, pad)], 'constant')
+    // np.pad example:
+    // >>> np.pad(data, [(2,1), (0,0)], 'constant') # Add 2-pre padding and 1-post padding to first dimension
+    // This input data is 2-dimensional. So the second argument takes 2-element list.
+    // There's no padding for second dimension
+    // array([[0, 0, 0],
+    //    [0, 0, 0],
+    //    [1, 2, 3],
+    //    [4, 5, 6],
+    //    [0, 0, 0]])
+
+    // Let's assume there's no padding as of September 13th.
+    let img = input;
+    let mut col: Array6<Elem> = Array6::zeros((
         n_input,
         channel_count,
         filter_height,
@@ -137,8 +150,88 @@ fn im2col(
         out_h,
         out_w,
     ));
-    // fill the array!
-    Array2::zeros((1, 1))
+    for y in 0..filter_height {
+        let y_max = y + stride * out_h;
+        for x in 0..filter_width {
+            let x_max = x + stride * out_w;
+            // What is it doing? I think copying something. img is 4-dimensional.
+            // What's the syntax of 'y:y_max:stride'?
+            // col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
+            // What does that mean??? I need to understand assignment with slice in left-hand side
+            // >>> a_3_4_5_12.shape
+            // (3, 4, 5, 12)
+            // >>> a_3_4_5_12[:,:,1:3:1, 4:9:1].shape
+            // (3, 4, 2, 5)
+
+            // a_3_4_6_6_5_12 =np.zeros((3,4,6,6,5,12))
+            // >>> a_3_4_6_6_5_12.shape
+            // (3, 4, 6, 6, 5, 12)
+            // >>> a_3_4_6_6_5_12[:,:,1,4,:,:] = a_3_4_5_12[:,:,1:3:1, 4:9:1]
+            // Traceback (most recent call last):
+            // File "<stdin>", line 1, in <module>
+            // ValueError: could not broadcast input array from shape (3,4,2,5) into shape (3,4,5,12)
+            // >>> a_3_4_6_6_5_12[:,:,1,4,:,:] = a_3_4_5_12[:,:,0::1, 0::1]
+            // >>> a_3_4_6_6_5_12[0][0][1][4][0][0]
+            // 0.38985549989040513
+            // >>> a_3_4_6_6_5_12[0][0][1][3][0][0]
+            // 0.0
+
+            // https://docs.rs/ndarray/0.11.2/ndarray/struct.ArrayBase.html#slicing
+            // x.slice_mut(s![.., 2, ..]).assign(&y);
+            if y == 1 && x == 2 && n_input > 1 {
+                println!("y_max-1 = {:?}, x_max-1 = {:?}", y_max - 1, x_max - 1);
+                println!(
+                    "img[[1, 2, y_max-1, x_max-1]] = {:?}",
+                    img[[1, 2, y_max - 1, x_max - 1]]
+                );
+            }
+            let img_slice = img.slice(s![.., .., y..y_max, x..x_max]);
+            if y == 1 && x == 2 && n_input > 1 {
+                println!("img_slice.shape: {:?}", img_slice.shape());
+                println!("img_slice[1, 2, 2, 2]: {:?}", img_slice[[1, 2, 2, 2]]);
+            }
+
+            {
+                let mut col_slice_mut = col.slice_mut(s![.., .., y, x, .., ..]);
+                if y == 1 && x == 2 {
+                    println!("col_slice_mut.shape: {:?}", col_slice_mut.shape());
+                }
+                col_slice_mut.assign(&img_slice);
+            }
+            if y == 1 && x == 2 && n_input > 1 {
+                println!("col[[1,2,1,2,0,0]] = {:?}", col[[1, 2, 1, 2, 0, 0]]);
+            }
+        }
+    }
+    if n_input > 1 {
+        println!(
+            "Before permuting axes:\ncol[[1,2,1,2,0,0]] = {:?}",
+            col[[1, 2, 1, 2, 0, 0]]
+        );
+    }
+    let permuted_col = col.permuted_axes([0, 4, 5, 1, 2, 3]);
+
+    // To avoid 'ShapeError/IncompatibleLayout: incompatible memory layout' at into_shape
+    let mut permuted_col_copy: Array6<Elem> = Array6::zeros((
+        n_input,
+        out_h,
+        out_w,
+        channel_count,
+        filter_height,
+        filter_width,
+    ));
+    permuted_col_copy.assign(&permuted_col);
+    // When reshape takes incompatible shape: ShapeError/IncompatibleShape: incompatible shapes
+    // When input array is not c- or f-contiguous: ShapeError/IncompatibleLayout: incompatible memory layout
+
+    let reshaped_col = permuted_col_copy.into_shape((
+        n_input * out_h * out_w,
+        channel_count * filter_height * filter_width,
+    ));
+    // Into shape https://docs.rs/ndarray/0.12.0/ndarray/struct.ArrayBase.html
+    // col.permuted_axes([0, 4, 5, 1, 2, 3])
+
+    reshaped_col.unwrap()
 }
 fn col2im(
     col: &Array2<Elem>,
@@ -182,6 +275,7 @@ impl Convolution {
 impl Layer for Convolution {
     fn forward(&mut self, x: Matrix) -> Matrix {
         let out: Matrix = x.mapv(Relu::relu);
+        //  (something)x(filter_height*filter_width*channel) matrix
         self.col = im2col(x, self.filter_height, self.filter_width, 1, 0);
         out
     }
@@ -564,8 +658,9 @@ fn backprop_test() {
     let label_table = LabelTable::new();
     let file_path = "mnist_train.csv";
     let file = File::open(file_path).unwrap();
-    let mnist_csv_reader_builder = csv::ReaderBuilder::new().has_headers(false);
-    let mut rdr = mnist_csv_reader_builder.from_reader(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(file);
 
     let mut mnist_records: Vec<MnistRecord> = Vec::new();
     let mut nn = NeuralNetwork::new(100);
@@ -600,4 +695,92 @@ fn backprop_test() {
             nn.back_prop(y);
         }
     }
+}
+#[test]
+fn broadcast_assign_test() {
+    let mut x = Array2::zeros((9, 3));
+    let y = Array::random((3), F32(Normal::new(0., 1.)));
+    x.assign(&y);
+    assert_eq!(x[[1, 1]], y[[1]]);
+    let z = Array::random((9), F32(Normal::new(0., 1.)));
+    // The below raises:
+    // ndarray: could not broadcast array from shape: [9] to: [9, 3]
+    // x.assign(&z);
+
+    let mut x_3 = Array3::zeros((9, 3, 4));
+    let y_2 = Array::random((3, 4), F32(Normal::new(0., 1.)));
+    // For each row, they're all same 3x4 matrix
+    x_3.assign(&y_2);
+    // below fails:
+    // ndarray: could not broadcast array from shape: [3] to: [9, 3, 4]
+    // x_3.assign(&y);
+
+    // As long as the shape of last parts in suffix, it's broadcasted
+    // E.g., (6, 7, 8, 9) assign (8, 9)
+    //       (6, 7, 8, 9) assign (9)
+    x_3.assign(&Array::random((4), F32(Normal::new(0., 1.))));
+}
+
+#[test]
+fn slice_assign_test() {
+    let mut x: Array3<f32> = Array3::zeros((9, 3, 4));
+    let y = Array::random((9, 4), F32(Normal::new(0., 1.)));
+    x.slice_mut(s![.., 2, ..]).assign(&y);
+    assert_eq!(x[[0, 0, 0]], 0.);
+    assert_eq!(x[[0, 2, 0]], y[[0, 0]]);
+    // cargo test -- --nocapture  to show println!
+    // println!("{:?}", x);
+}
+
+#[test]
+fn assign_test() {
+    let mut x = Array4::zeros((9, 3, 100, 100));
+    let y = Array::random((9, 3, 100, 100), F32(Normal::new(0., 1.)));
+    x.assign(&y);
+    assert_eq!(x[[1, 1, 1, 1]], y[[1, 1, 1, 1]]);
+    let z = Array::random((3, 100, 100), F32(Normal::new(0., 1.)));
+    x.assign(&z);
+    for i in 0..9 {
+        assert_eq!(x[[i, 1, 1, 1]], z[[1, 1, 1]]);
+    }
+    /*
+    let m_100_100 = Array::random((100, 100), F32(Normal::new(0., 1.)));
+    x.assign(&z);
+    for i in 0..9 {
+        assert_eq!(x[[i,1,1,1]], m_100_100[[1,1]]);
+    }*/
+}
+
+#[test]
+fn im2col_shape_test() {
+    // n_input, channel_count, input_height, input_width
+    let input2 = Array::random((1, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let col2: Array2<Elem> = im2col(input2, 5, 5, 1, 0);
+    assert_eq!(col2.shape(), &[1 * 3 * 3, 5 * 5 * 3]);
+    let input1 = Array4::zeros((9, 3, 100, 100));
+    let col1: Array2<Elem> = im2col(input1, 50, 50, 1, 0);
+    assert_eq!(col1.shape(), &[9 * 51 * 51, 50 * 50 * 3]);
+    let input3 = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let col3: Array2<Elem> = im2col(input3, 5, 5, 1, 0);
+    assert_eq!(col3.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
+}
+
+#[test]
+fn im2col_value_test() {
+    let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let a = input[[1, 2, 3, 4]];
+    println!("a = {:?}", a);
+    let input_at_0 = input[[0, 0, 0, 0]];
+    let col: Array2<Elem> = im2col(input, 5, 5, 1, 0);
+    assert_eq!(col.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
+    let b = col[[17, 57]];
+    assert_eq!(col[[0, 0]], input_at_0);
+    for i in 0..(10 * 3 * 3) {
+        for j in 0..(5 * 5 * 3) {
+            if (col[[i, j]] == a) {
+                println!("(i, j): ({:?}, {:?}) matched", i, j);
+            }
+        }
+    }
+    assert_eq!(b, a);
 }
