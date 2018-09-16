@@ -178,36 +178,10 @@ fn im2col(
 
             // https://docs.rs/ndarray/0.11.2/ndarray/struct.ArrayBase.html#slicing
             // x.slice_mut(s![.., 2, ..]).assign(&y);
-            if y == 1 && x == 2 && n_input > 1 {
-                println!("y_max-1 = {:?}, x_max-1 = {:?}", y_max - 1, x_max - 1);
-                println!(
-                    "img[[1, 2, y_max-1, x_max-1]] = {:?}",
-                    img[[1, 2, y_max - 1, x_max - 1]]
-                );
-            }
             let img_slice = img.slice(s![.., .., y..y_max, x..x_max]);
-            if y == 1 && x == 2 && n_input > 1 {
-                println!("img_slice.shape: {:?}", img_slice.shape());
-                println!("img_slice[1, 2, 2, 2]: {:?}", img_slice[[1, 2, 2, 2]]);
-            }
-
-            {
-                let mut col_slice_mut = col.slice_mut(s![.., .., y, x, .., ..]);
-                if y == 1 && x == 2 {
-                    println!("col_slice_mut.shape: {:?}", col_slice_mut.shape());
-                }
-                col_slice_mut.assign(&img_slice);
-            }
-            if y == 1 && x == 2 && n_input > 1 {
-                println!("col[[1,2,1,2,0,0]] = {:?}", col[[1, 2, 1, 2, 0, 0]]);
-            }
+            let mut col_slice_mut = col.slice_mut(s![.., .., y, x, .., ..]);
+            col_slice_mut.assign(&img_slice);
         }
-    }
-    if n_input > 1 {
-        println!(
-            "Before permuting axes:\ncol[[1,2,1,2,0,0]] = {:?}",
-            col[[1, 2, 1, 2, 0, 0]]
-        );
     }
     let permuted_col = col.permuted_axes([0, 4, 5, 1, 2, 3]);
 
@@ -230,7 +204,6 @@ fn im2col(
     ));
     // Into shape https://docs.rs/ndarray/0.12.0/ndarray/struct.ArrayBase.html
     // col.permuted_axes([0, 4, 5, 1, 2, 3])
-
     reshaped_col.unwrap()
 }
 fn col2im(
@@ -769,18 +742,10 @@ fn im2col_shape_test() {
 fn im2col_value_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     let a = input[[1, 2, 3, 4]];
-    println!("a = {:?}", a);
     let input_at_0 = input[[0, 0, 0, 0]];
     let col: Array2<Elem> = im2col(input, 5, 5, 1, 0);
     assert_eq!(col.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
     let b = col[[17, 57]];
     assert_eq!(col[[0, 0]], input_at_0);
-    for i in 0..(10 * 3 * 3) {
-        for j in 0..(5 * 5 * 3) {
-            if (col[[i, j]] == a) {
-                println!("(i, j): ({:?}, {:?}) matched", i, j);
-            }
-        }
-    }
     assert_eq!(b, a);
 }
