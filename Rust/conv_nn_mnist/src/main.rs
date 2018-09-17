@@ -141,8 +141,17 @@ fn im2col(
     //    [4, 5, 6],
     //    [0, 0, 0]])
 
-    // Let's assume there's no padding as of September 13th.
-    let img = input;
+    let mut img:Array4<Elem> = Array4::<Elem>::zeros((n_input, channel_count,
+        input_height + 2 * pad, input_width + 2 * pad));
+    // Example:
+    // input_width:5, padding: 2, then 0, 1, 2, 3, 4, 5, 6, 7, 8
+    // pad..(input_width+pad)
+    {
+        // If pad==0, then this copy is not needed
+        let mut img_init_slice_mut = img.slice_mut(s![.., .., pad..(input_height+pad), pad..(input_width+pad)]);
+        img_init_slice_mut.assign(input);
+    }
+
     let mut col: Array6<Elem> = Array6::zeros((
         n_input,
         channel_count,
@@ -240,7 +249,10 @@ fn col2im(
             img_slice_mut += &col_slice;
         }
     }
-    img
+    // If pad==0, then this copy is not needed
+    let mut ret = Array4::<Elem>::zeros((n_input, channel_count, input_height, input_width));
+    ret.assign(&img.slice(s![.., .., pad..(input_height+pad), pad..(input_width+pad)]));
+    ret
 }
 
 #[derive(Debug)]
@@ -759,16 +771,28 @@ fn assign_test() {
 
 #[test]
 fn im2col_shape_test() {
+    /* The test below runs more than 1 minute
+    let input1 = Array4::zeros((9, 3, 100, 100));
+    let col1: Array2<Elem> = im2col(&input1, 50, 50, 1, 0);
+    assert_eq!(col1.shape(), &[9 * 51 * 51, 50 * 50 * 3]);
+    */
+
     // n_input, channel_count, input_height, input_width
     let input2 = Array::random((1, 3, 7, 7), F32(Normal::new(0., 1.)));
     let col2: Array2<Elem> = im2col(&input2, 5, 5, 1, 0);
     assert_eq!(col2.shape(), &[1 * 3 * 3, 5 * 5 * 3]);
-    let input1 = Array4::zeros((9, 3, 100, 100));
-    let col1: Array2<Elem> = im2col(&input1, 50, 50, 1, 0);
-    assert_eq!(col1.shape(), &[9 * 51 * 51, 50 * 50 * 3]);
     let input3 = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     let col3: Array2<Elem> = im2col(&input3, 5, 5, 1, 0);
     assert_eq!(col3.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
+}
+
+#[test]
+fn im2col_shape_pad_test() {
+    let input4 = Array::random((1, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let col4: Array2<Elem> = im2col(&input4, 5, 5, 1, 2); // pad:2
+    // 7/5 -> 3
+    // 11/5 -> 7 This is out_h and out_w
+    assert_eq!(col4.shape(), &[1 * 7 * 7, 5 * 5 * 3]);
 }
 
 #[test]
@@ -789,5 +813,12 @@ fn col2im_shape_test() {
     let col: Array2<Elem> = im2col(&input, 5, 5, 1, 0);
     assert_eq!(col.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
     let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 0);
+    assert_eq!(img_from_col.shape(), &[10, 3, 7, 7]);
+}
+#[test]
+fn col2im_shape_pad_test() {
+    let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let col: Array2<Elem> = im2col(&input, 5, 5, 1, 2);
+    let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 2);
     assert_eq!(img_from_col.shape(), &[10, 3, 7, 7]);
 }
