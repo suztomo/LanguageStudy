@@ -1,0 +1,14 @@
+784 input 100 hidden layer 10 output
+
+Read 59999 MNIST records in 2 secs
+Finished epoch 0. Prediction rate: 0.5945432
+Finished epoch 1. Prediction rate: 0.6959283
+Finished epoch 2. Prediction rate: 0.72092867
+Finished epoch 3. Prediction rate: 0.76011264
+Finished epoch 4. Prediction rate: 0.7723295
+Finished epoch 5. Prediction rate: 0.7825297
+Finished epoch 6. Prediction rate: 0.7967299
+Finished epoch 7. Prediction rate: 0.80439675
+Finished epoch 8. Prediction rate: 0.81708026
+Finished epoch 9. Prediction rate: 0.8315139
+Finished training in 161 secs
