@@ -124,14 +124,23 @@ fn im2col(
     //    [4, 5, 6],
     //    [0, 0, 0]])
 
-    let mut img:Array4<Elem> = Array4::<Elem>::zeros((n_input, channel_count,
-        input_height + 2 * pad, input_width + 2 * pad));
+    let mut img: Array4<Elem> = Array4::<Elem>::zeros((
+        n_input,
+        channel_count,
+        input_height + 2 * pad,
+        input_width + 2 * pad,
+    ));
     // Example:
     // input_width:5, padding: 2, then 0, 1, 2, 3, 4, 5, 6, 7, 8
     // pad..(input_width+pad)
     {
         // If pad==0, then this copy is not needed
-        let mut img_init_slice_mut = img.slice_mut(s![.., .., pad..(input_height+pad), pad..(input_width+pad)]);
+        let mut img_init_slice_mut = img.slice_mut(s![
+            ..,
+            ..,
+            pad..(input_height + pad),
+            pad..(input_width + pad)
+        ]);
         img_init_slice_mut.assign(input);
     }
 
@@ -208,24 +217,36 @@ fn col2im(
     stride: usize,
     pad: usize,
 ) -> Array4<Elem> {
-    let (n_input, channel_count, input_height, input_width) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
-    let out_h = (input_height + 2*pad - filter_height) / stride + 1;
-    let out_w = (input_width + 2*pad - filter_width) / stride + 1;
+    let (n_input, channel_count, input_height, input_width) = (
+        input_shape[0],
+        input_shape[1],
+        input_shape[2],
+        input_shape[3],
+    );
+    let out_h = (input_height + 2 * pad - filter_height) / stride + 1;
+    let out_w = (input_width + 2 * pad - filter_width) / stride + 1;
     let mut col_copy = Array::zeros(col.raw_dim());
     col_copy.assign(col);
     // col = col.reshape(N, out_h, out_w, C, filter_h, filter_w).transpose(0, 3, 4, 5, 1, 2)
-    let reshaped_col = col_copy.into_shape((n_input, out_h, out_w, channel_count, filter_height, filter_width));
+    let reshaped_col = col_copy.into_shape((
+        n_input,
+        out_h,
+        out_w,
+        channel_count,
+        filter_height,
+        filter_width,
+    ));
     let transposed_col = reshaped_col.unwrap().permuted_axes([0, 3, 4, 5, 1, 2]);
     let mut img = Array4::zeros((
         n_input,
         channel_count,
-        input_height + 2*pad + stride - 1, // H + 2*pad + stride - 1
-        input_width + 2*pad + stride - 1 // W + 2*pad + stride - 1
+        input_height + 2 * pad + stride - 1, // H + 2*pad + stride - 1
+        input_width + 2 * pad + stride - 1,  // W + 2*pad + stride - 1
     ));
     for y in 0..filter_height {
-        let y_max = y + stride*out_h;
+        let y_max = y + stride * out_h;
         for x in 0..filter_width {
-            let x_max = x + stride*out_w;
+            let x_max = x + stride * out_w;
             let col_slice = transposed_col.slice(s![.., .., y, x, .., ..]);
             // img[:, :, y:y_max:stride, x:x_max:stride] += col[:, :, y, x, :, :]
             let mut img_slice_mut = img.slice_mut(s![.., .., y..y_max;stride, x..x_max;stride]);
@@ -234,7 +255,12 @@ fn col2im(
     }
     // If pad==0, then this copy is not needed
     let mut ret = Array4::<Elem>::zeros((n_input, channel_count, input_height, input_width));
-    ret.assign(&img.slice(s![.., .., pad..(input_height+pad), pad..(input_width+pad)]));
+    ret.assign(&img.slice(s![
+        ..,
+        ..,
+        pad..(input_height + pad),
+        pad..(input_width + pad)
+    ]));
     ret
 }
 
@@ -270,7 +296,7 @@ impl<'a> Convolution<'a> {
             col: Array2::zeros((1, 1)),
             weights: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.))),
             d_weights: Array4::zeros((1, 1, 1, 1)),
-            bias: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.)))
+            bias: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.))),
         };
         conv
     }
@@ -282,19 +308,29 @@ impl<'a> Layer<'a> for Convolution<'a> {
         //  (something)x(filter_height*filter_width*channel) matrix
         let shape = &x.shape();
         let weight_shape = &self.weights.shape();
-        let (n_input, channel_count, input_height, input_width) = (shape[0], shape[1],
-            shape[2], shape[3]);
-        let (n_filter, filter_channel_count, filter_height, filter_width) = (weight_shape[0],
-            weight_shape[1],weight_shape[2], weight_shape[3]);
+        let (n_input, channel_count, input_height, input_width) =
+            (shape[0], shape[1], shape[2], shape[3]);
+        let (n_filter, filter_channel_count, filter_height, filter_width) = (
+            weight_shape[0],
+            weight_shape[1],
+            weight_shape[2],
+            weight_shape[3],
+        );
         debug_assert_eq!(channel_count, filter_channel_count);
-        let out_h = 1 + (input_height + 2*self.pad - filter_height) / self.stride;
-        let out_w = 1 + (input_width + 2*self.pad - filter_width) / self.stride;
+        let out_h = 1 + (input_height + 2 * self.pad - filter_height) / self.stride;
+        let out_w = 1 + (input_width + 2 * self.pad - filter_width) / self.stride;
         // col:(rest of the right) x (filter_height * filter_width * channel_count)
-        let col = im2col(&x, self.filter_height, self.filter_width, self.stride, self.pad);
+        let col = im2col(
+            &x,
+            self.filter_height,
+            self.filter_width,
+            self.stride,
+            self.pad,
+        );
 
         let mut weight_copy = Array4::<Elem>::zeros(self.weights.raw_dim());
         weight_copy.assign(&self.weights);
-        let reshaping_column_count = filter_channel_count*filter_height*filter_width;
+        let reshaping_column_count = filter_channel_count * filter_height * filter_width;
         let weight_reshaped_res = weight_copy.into_shape((n_filter, reshaping_column_count));
         // Problem of 9/16        ^ cannot move out of borrowed content
         let weight_reshaped = weight_reshaped_res.unwrap();
@@ -306,8 +342,13 @@ impl<'a> Layer<'a> for Convolution<'a> {
         let out_shape = &out.shape();
         let out_shape_multi_sum = out_shape[0] * out_shape[1] * out_shape[2] * out_shape[3];
         let out_reshaped_last_elem = out_shape_multi_sum / n_input / out_h / out_w;
-        let mut out_reshaped = Array4::<Elem>::zeros((n_input, out_h, out_w, out_reshaped_last_elem));
-        assert_eq!(out_reshaped.shape(), out.shape(), "Two shapes should match to assign");
+        let mut out_reshaped =
+            Array4::<Elem>::zeros((n_input, out_h, out_w, out_reshaped_last_elem));
+        assert_eq!(
+            out_reshaped.shape(),
+            out.shape(),
+            "Two shapes should match to assign"
+        );
         out_reshaped.assign(&out);
         let out_transposed = out_reshaped.permuted_axes([0, 3, 1, 2]);
         self.last_input = x;
@@ -316,13 +357,17 @@ impl<'a> Layer<'a> for Convolution<'a> {
     }
     fn backward(&mut self, dout: Matrix) -> Matrix {
         let last_input_shape = &self.last_input.shape();
-        let im_from_col = col2im(&self.col, last_input_shape, self.filter_height,
-            self.filter_width, 1, 0);
+        let im_from_col = col2im(
+            &self.col,
+            last_input_shape,
+            self.filter_height,
+            self.filter_width,
+            1,
+            0,
+        );
         im_from_col
     }
 }
-
-
 
 #[test]
 fn broadcast_assign_test() {
@@ -400,8 +445,8 @@ fn im2col_shape_test() {
 fn im2col_shape_pad_test() {
     let input4 = Array::random((1, 3, 7, 7), F32(Normal::new(0., 1.)));
     let col4: Array2<Elem> = im2col(&input4, 5, 5, 1, 2); // pad:2
-    // 7/5 -> 3
-    // 11/5 -> 7 This is out_h and out_w
+                                                          // 7/5 -> 3
+                                                          // 11/5 -> 7 This is out_h and out_w
     assert_eq!(col4.shape(), &[1 * 7 * 7, 5 * 5 * 3]);
 }
 
@@ -433,11 +478,12 @@ fn col2im_shape_pad_test() {
     assert_eq!(img_from_col.shape(), &[10, 3, 7, 7]);
 }
 
-
 #[test]
 fn convolution_forward_test() {
     let mut convolution_layer = Convolution::new(5, 5, 1, 0);
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     let m = convolution_layer.forward(&input);
+
+    println!("The result of forward: {:?}", m);
     // Error as of 9/17        ^^^^^ borrowed value does not live long enough
 }
