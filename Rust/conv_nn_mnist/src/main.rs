@@ -30,6 +30,9 @@ use ndarray::Ix;
 extern crate utils;
 use utils::math::sigmoid;
 
+mod layer;
+use layer::{Layer, Matrix, Convolution, Relu};
+
 fn sigmoid_derivative(x: f32) -> f32 {
     // https://beckernick.github.io/sigmoid-derivative-neural-network/
     let t = sigmoid(x);

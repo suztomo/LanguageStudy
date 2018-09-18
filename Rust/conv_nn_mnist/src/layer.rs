@@ -1,20 +1,11 @@
-extern crate csv;
 use std::fs::File;
 use std::time::Instant;
 use std::{thread, time};
 
-extern crate ansi_term;
 use ansi_term::Colour::*;
 use ansi_term::{ANSIString, ANSIStrings, Style};
 
-#[macro_use]
-extern crate lazy_static; // 1.0.1;
 
-#[macro_use]
-extern crate ndarray;
-//extern crate ndarray_linalg;
-extern crate ndarray_rand;
-extern crate rand;
 
 use ndarray_rand::{RandomExt, F32};
 use rand::distributions::Normal;
@@ -23,7 +14,6 @@ use std::string::ToString;
 // use rand::Rng;
 use ndarray::prelude::*;
 use ndarray::Ix;
-extern crate utils;
 use utils::math::sigmoid;
 
 const IMG_H_SIZE: usize = 28;
@@ -61,16 +51,16 @@ lazy_static! {
 
 type Elem = f32;
 // Following the book's interface of having 4-dimensional array as input of each layer
-type Matrix = Array4<Elem>;
+pub type Matrix = Array4<Elem>;
 
 // Common method that's applicable for all layer
-trait Layer<'a> {
+pub trait Layer<'a> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix;
     fn backward(&mut self, dout: Matrix) -> Matrix;
 }
 
 #[derive(Debug)]
-struct Relu {
+pub struct Relu {
     mask: Matrix, // 0. or 1.
 }
 impl Relu {
@@ -265,7 +255,7 @@ fn col2im(
 }
 
 #[derive(Debug)]
-struct Convolution<'a> {
+pub struct Convolution<'a> {
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py
     // The following indicates that weights are also 4-dimensional array
     //   self.dW = self.dW.transpose(1, 0).reshape(FN, C, FH, FW)
@@ -480,10 +470,10 @@ fn col2im_shape_pad_test() {
 
 #[test]
 fn convolution_forward_test() {
-    let mut convolution_layer = Convolution::new(5, 5, 1, 0);
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let mut convolution_layer = Convolution::new(5, 5, 1, 0);
     let m = convolution_layer.forward(&input);
+    // Error as of 9/17                ^^^^^ borrowed value does not live long enough
 
     println!("The result of forward: {:?}", m);
-    // Error as of 9/17        ^^^^^ borrowed value does not live long enough
 }
