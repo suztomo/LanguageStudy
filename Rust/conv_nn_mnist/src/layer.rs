@@ -1,26 +1,9 @@
-use std::fs::File;
-use std::time::Instant;
-use std::{thread, time};
-
-use ansi_term::Colour::*;
-use ansi_term::{ANSIString, ANSIStrings, Style};
-
-
-
 use ndarray_rand::{RandomExt, F32};
 use rand::distributions::Normal;
-use rand::{thread_rng, Rng};
-use std::string::ToString;
 // use rand::Rng;
 use ndarray::prelude::*;
 use ndarray::Ix;
 use utils::math::sigmoid;
-
-const IMG_H_SIZE: usize = 28;
-const IMG_W_SIZE: usize = 28;
-//const HIDDEN_LAYER_SIZE: usize = 100;
-
-const MNIST_DOT_MAX: f32 = 255.;
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
@@ -267,16 +250,23 @@ pub struct Convolution<'a> {
     col: Array2<Elem>,
     weights: Matrix, // What's the dimension?
     d_weights: Matrix,
-    bias: Matrix,
+    bias: Array1<Elem>,
 }
 
 impl<'a> Convolution<'a> {
     pub fn new(
+        n_input: usize,
+        filter_num: usize,
+        filter_channel_count: usize,
         filter_height: usize,
         filter_width: usize,
         stride: usize,
         pad: usize,
     ) -> Convolution<'a> {
+        // Initializing weights
+        //   self.params['W1'] = weight_init_std * \
+        //       np.random.randn(filter_num, input_dim[0], filter_size, filter_size)
+        //   self.params['b1'] = np.zeros(filter_num)
         let conv = Convolution {
             filter_height,
             filter_width,
@@ -284,29 +274,63 @@ impl<'a> Convolution<'a> {
             stride,
             pad,
             col: Array2::zeros((1, 1)),
-            weights: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.))),
+            // Filters: (FN, C, FH, FW)
+            weights: Array::random(
+                (
+                    filter_num,
+                    filter_channel_count,
+                    filter_height,
+                    filter_width,
+                ),
+                F32(Normal::new(0., 1.)),
+            ),
             d_weights: Array4::zeros((1, 1, 1, 1)),
-            bias: Array::random((IMG_H_SIZE, IMG_W_SIZE, 1, 1), F32(Normal::new(0., 1.))),
+            // The filter_num matches the number of channels in output feature map
+            bias: Array1::zeros(filter_num),
         };
         conv
     }
 }
 
+/* Attempt to let programmers to use -1 for reshape e.g., input.reshape(FN, out_h, out_w, -1)
+   usize doesn't allow -1
+
+fn reshape(input: ArrayBase<Elem>, into_shape: &[i32]) {
+    let mut shape = into_shape[:];
+    // Get multiply-sum of elements excepts -1
+    let mul_total_input = input.shape().iter().fold(1, |sum, val| sum * val);
+    let mul_total_shape = out.shape().iter().fold(1, |sum, val| sum * (if val > 0 { val } else { 1 } ));
+    for i in shape.iter_mut() {
+        if (i < 0) {
+            *i = mul_total_input / mul_total_shape;
+        }
+    }
+    input.into_shape(shape)
+}
+*/
 impl<'a> Layer<'a> for Convolution<'a> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
         let out: Matrix = x.mapv(Relu::relu);
         //  (something)x(filter_height*filter_width*channel) matrix
-        let shape = &x.shape();
+        let input_shape = &x.shape();
+        let (n_input, channel_count, input_height, input_width) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
         let weight_shape = &self.weights.shape();
-        let (n_input, channel_count, input_height, input_width) =
-            (shape[0], shape[1], shape[2], shape[3]);
+        // As of September 18th, filter_channel_count is 10 and not good
         let (n_filter, filter_channel_count, filter_height, filter_width) = (
             weight_shape[0],
-            weight_shape[1],
+            weight_shape[1], // actually this (filter_channel_count) is ignored in
             weight_shape[2],
             weight_shape[3],
         );
-        debug_assert_eq!(channel_count, filter_channel_count);
+        debug_assert_eq!(
+            channel_count, filter_channel_count,
+            "The number of channel in input and the number of channel in filter must match"
+        );
         let out_h = 1 + (input_height + 2 * self.pad - filter_height) / self.stride;
         let out_w = 1 + (input_width + 2 * self.pad - filter_width) / self.stride;
         // col:(rest of the right) x (filter_height * filter_width * channel_count)
@@ -321,25 +345,42 @@ impl<'a> Layer<'a> for Convolution<'a> {
         let mut weight_copy = Array4::<Elem>::zeros(self.weights.raw_dim());
         weight_copy.assign(&self.weights);
         let reshaping_column_count = filter_channel_count * filter_height * filter_width;
+        let weights_mulsum = self.weights.shape().iter().fold(1, |sum, val| sum * val);
+        debug_assert_eq!(
+            weights_mulsum,
+            n_filter * reshaping_column_count,
+            "The total multiplication of shapes should remain same after reshaping"
+        );
         let weight_reshaped_res = weight_copy.into_shape((n_filter, reshaping_column_count));
         // Problem of 9/16        ^ cannot move out of borrowed content
         let weight_reshaped = weight_reshaped_res.unwrap();
+        debug_assert_eq!(
+            weight_reshaped.shape()[0],
+            self.bias.shape()[0],
+            "The number of filter must match the number of elements in bias"
+        );
         let col_weight = weight_reshaped.t();
         // col: something x reshaping_column_count
         // col_weight: reshaping_column_count x n_filter
-        let out = col.dot(&col_weight) + &self.bias;
-        // out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
-        let out_shape = &out.shape();
-        let out_shape_multi_sum = out_shape[0] * out_shape[1] * out_shape[2] * out_shape[3];
-        let out_reshaped_last_elem = out_shape_multi_sum / n_input / out_h / out_w;
-        let mut out_reshaped =
-            Array4::<Elem>::zeros((n_input, out_h, out_w, out_reshaped_last_elem));
-        assert_eq!(
-            out_reshaped.shape(),
-            out.shape(),
-            "Two shapes should match to assign"
+
+        // ndarray: inputs 90 × 75 and 250 × 3 are not compatible for matrix multiplication
+        debug_assert_eq!(
+            col.shape()[1],
+            col_weight.shape()[0],
+            "The matrix multiplication should work with these dimensions"
         );
-        out_reshaped.assign(&out);
+        let input_weight_multi = col.dot(&col_weight);
+        // Error as of September 18th:
+        //   darray: could not broadcast array from shape: [3] to: [90, 10]'
+        debug_assert_eq!(input_weight_multi.shape()[1], self.bias.shape()[0],
+        "The number of columns in input_weight_multi should match the number of elements in bias");
+        let out = input_weight_multi + &self.bias;
+        // out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
+        //        let out_shape = &out.shape();
+        let out_shape_multi_sum = out.shape().iter().fold(1, |sum, val| sum * val);
+        let out_reshaped_last_elem = out_shape_multi_sum / n_input / out_h / out_w;
+        let out_reshaped_res = out.into_shape((n_input, out_h, out_w, out_reshaped_last_elem));
+        let out_reshaped = out_reshaped_res.unwrap();
         let out_transposed = out_reshaped.permuted_axes([0, 3, 1, 2]);
         self.last_input = x;
         self.col = col;
@@ -362,10 +403,10 @@ impl<'a> Layer<'a> for Convolution<'a> {
 #[test]
 fn broadcast_assign_test() {
     let mut x = Array2::zeros((9, 3));
-    let y = Array::random((3), F32(Normal::new(0., 1.)));
+    let y = Array::random(3, F32(Normal::new(0., 1.)));
     x.assign(&y);
     assert_eq!(x[[1, 1]], y[[1]]);
-    let z = Array::random((9), F32(Normal::new(0., 1.)));
+    let z = Array::random(9, F32(Normal::new(0., 1.)));
     // The below raises:
     // ndarray: could not broadcast array from shape: [9] to: [9, 3]
     // x.assign(&z);
@@ -381,7 +422,7 @@ fn broadcast_assign_test() {
     // As long as the shape of last parts in suffix, it's broadcasted
     // E.g., (6, 7, 8, 9) assign (8, 9)
     //       (6, 7, 8, 9) assign (9)
-    x_3.assign(&Array::random((4), F32(Normal::new(0., 1.))));
+    x_3.assign(&Array::random(4, F32(Normal::new(0., 1.))));
 }
 
 #[test]
@@ -471,9 +512,14 @@ fn col2im_shape_pad_test() {
 #[test]
 fn convolution_forward_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
-    let mut convolution_layer = Convolution::new(5, 5, 1, 0);
+    let dim_mul = input.shape().iter().fold(1, |sum, val| sum * val);
+    assert_eq!(dim_mul, 10 * 3 * 7 * 7);
+    let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
     let m = convolution_layer.forward(&input);
-    // Error as of 9/17                ^^^^^ borrowed value does not live long enough
-
-    println!("The result of forward: {:?}", m);
+    assert_eq!(
+        m.shape(),
+        &[10, 30, 3, 3],
+        "(Number of input, Number of channel in output feature map,
+     Number of output height, Number of outut width)"
+    );
 }

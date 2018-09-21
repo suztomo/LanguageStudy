@@ -31,7 +31,7 @@ extern crate utils;
 use utils::math::sigmoid;
 
 mod layer;
-use layer::{Layer, Matrix, Convolution, Relu};
+use layer::{Convolution, Layer, Matrix, Relu};
 
 fn sigmoid_derivative(x: f32) -> f32 {
     // https://beckernick.github.io/sigmoid-derivative-neural-network/
@@ -286,7 +286,7 @@ impl MnistRecord {
 }
 
 fn main() {
-    let convolution_layer = Convolution::new(1, 2, 3, 4);
+    let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
     let relu_layer = Relu::new();
     let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer];
     println!("layer array: {:?}", layer_vec.len());
