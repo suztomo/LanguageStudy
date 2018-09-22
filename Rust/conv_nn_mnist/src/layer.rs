@@ -39,7 +39,7 @@ pub type Matrix = Array4<Elem>;
 // Common method that's applicable for all layer
 pub trait Layer<'a> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix;
-    fn backward(&mut self, dout: Matrix) -> Matrix;
+    fn backward(&mut self, dout: &'a Matrix) -> Matrix;
 }
 
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl<'a> Layer<'a> for Relu {
         self.mask = x.mapv(|x| if x < 0. { 0. } else { 1. });
         out
     }
-    fn backward(&mut self, dout: Matrix) -> Matrix {
+    fn backward(&mut self, dout: &'a Matrix) -> Matrix {
         // 0 if mask is zero. 1 if mask is 1
         let dx = dout * &self.mask;
         dx
@@ -248,9 +248,11 @@ pub struct Convolution<'a> {
     pad: usize,
     last_input: &'a Matrix, // x in the book. Owned?
     col: Array2<Elem>,
-    weights: Matrix, // What's the dimension?
+    col_weight: Array2<Elem>, // Column representation (im2col) of weights
+    weights: Matrix,          // What's the dimension?
     d_weights: Matrix,
     bias: Array1<Elem>,
+    d_bias: Array1<Elem>,
 }
 
 impl<'a> Convolution<'a> {
@@ -267,6 +269,8 @@ impl<'a> Convolution<'a> {
         //   self.params['W1'] = weight_init_std * \
         //       np.random.randn(filter_num, input_dim[0], filter_size, filter_size)
         //   self.params['b1'] = np.zeros(filter_num)
+
+        let col_weight_column_count = filter_channel_count * filter_height * filter_width;
         let conv = Convolution {
             filter_height,
             filter_width,
@@ -274,6 +278,7 @@ impl<'a> Convolution<'a> {
             stride,
             pad,
             col: Array2::zeros((1, 1)),
+            col_weight: Array2::zeros((col_weight_column_count, filter_num)), // Do we know the H, W at initialization?
             // Filters: (FN, C, FH, FW)
             weights: Array::random(
                 (
@@ -287,6 +292,7 @@ impl<'a> Convolution<'a> {
             d_weights: Array4::zeros((1, 1, 1, 1)),
             // The filter_num matches the number of channels in output feature map
             bias: Array1::zeros(filter_num),
+            d_bias: Array1::zeros(filter_num),
         };
         conv
     }
@@ -384,19 +390,59 @@ impl<'a> Layer<'a> for Convolution<'a> {
         let out_transposed = out_reshaped.permuted_axes([0, 3, 1, 2]);
         self.last_input = x;
         self.col = col;
+        self.col_weight.assign(&col_weight);
+        //        self.col_weight = .into_owned();
         out_transposed
     }
-    fn backward(&mut self, dout: Matrix) -> Matrix {
-        let last_input_shape = &self.last_input.shape();
-        let im_from_col = col2im(
-            &self.col,
-            last_input_shape,
-            self.filter_height,
-            self.filter_width,
-            1,
-            0,
+
+    fn backward(&mut self, dout: &'a Matrix) -> Matrix {
+        // FN, C, FH, FW = self.W.shape
+        let weight_shape = &self.weights.shape();
+        // As of September 18th, filter_channel_count is 10 and not good
+        let (n_filter, filter_channel_count, filter_height, filter_width) = (
+            weight_shape[0],
+            weight_shape[1], // actually this (filter_channel_count) is ignored in
+            weight_shape[2],
+            weight_shape[3],
         );
-        im_from_col
+        // permuted_axes was complaining the borrowed reference. But calling view is enough
+        // dout = dout.transpose(0,2,3,1).reshape(-1, FN)
+        // let mut dout_copy: Array4<Elem> = Array::zeros(dout.raw_dim());
+        // dout_copy.assign(dout);
+        let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
+        let dout_transposed_dim_mul = dout_transposed.shape().iter().fold(1, |sum, val| sum * val);
+        let reshape_row_count = dout_transposed_dim_mul / n_filter;
+        let mut dout_transposed_copy = Array::zeros(dout_transposed.raw_dim());
+        dout_transposed_copy.assign(&dout_transposed);
+        let dout_reshaped_res = dout_transposed_copy.into_shape((reshape_row_count, n_filter));
+
+        // As of 9/21, "incompatible shapes" error
+        let dout_reshaped = dout_reshaped_res.unwrap();
+
+        // self.db = np.sum(dout, axis=0)
+        self.d_bias = dout_reshaped.sum_axis(Axis(0));
+
+        // self.dW = np.dot(self.col.T, dout)
+        // As of 9/21, it complains:  'ndarray: inputs 75 × 90 and 9 × 30 are not compatible for matrix multiplication'
+        let col_t = self.col.t();
+        let d_weight_tmp = col_t.dot(&dout_reshaped);
+        self.d_weights = d_weight_tmp
+            .permuted_axes([1, 0])
+            .into_shape((n_filter, filter_channel_count, filter_height, filter_width))
+            .unwrap();
+
+        // dcol = np.dot(dout, self.col_W.T)
+        let d_col = dout_reshaped.dot(&self.col_weight.t());
+        // dx = col2im(dcol, self.x.shape, FH, FW, self.stride, self.pad)
+        let dx = col2im(
+            &d_col,
+            self.last_input.shape(),
+            filter_height,
+            filter_width,
+            self.stride,
+            self.pad,
+        );
+        dx
     }
 }
 
@@ -512,6 +558,7 @@ fn col2im_shape_pad_test() {
 #[test]
 fn convolution_forward_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let dout = Array::random((10, 3, 3, 3), F32(Normal::new(0., 1.)));
     let dim_mul = input.shape().iter().fold(1, |sum, val| sum * val);
     assert_eq!(dim_mul, 10 * 3 * 7 * 7);
     let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
@@ -522,4 +569,5 @@ fn convolution_forward_test() {
         "(Number of input, Number of channel in output feature map,
      Number of output height, Number of outut width)"
     );
+    convolution_layer.backward(&dout);
 }
