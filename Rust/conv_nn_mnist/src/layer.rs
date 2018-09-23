@@ -558,16 +558,21 @@ fn col2im_shape_pad_test() {
 #[test]
 fn convolution_forward_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
-    let dout = Array::random((10, 3, 3, 3), F32(Normal::new(0., 1.)));
+    let dout = Array::random((10, 30, 3, 3), F32(Normal::new(0., 1.)));
     let dim_mul = input.shape().iter().fold(1, |sum, val| sum * val);
     assert_eq!(dim_mul, 10 * 3 * 7 * 7);
     let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
     let m = convolution_layer.forward(&input);
     assert_eq!(
         m.shape(),
-        &[10, 30, 3, 3],
+        dout.shape(), // &[10, 30, 3, 3]
         "(Number of input, Number of channel in output feature map,
-     Number of output height, Number of outut width)"
+     Number of output height, Number of outut width) should match the expected dout's shape"
     );
-    convolution_layer.backward(&dout);
+    let dx = convolution_layer.backward(&dout);
+    assert_eq!(
+        dx.shape(),
+        input.shape(),
+        "dx's shape must match the input's shape"
+    );
 }
