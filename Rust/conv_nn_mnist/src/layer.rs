@@ -316,23 +316,9 @@ fn reshape(input: ArrayBase<Elem>, into_shape: &[i32]) {
 */
 impl<'a> Layer<'a> for Convolution<'a> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
-        let out: Matrix = x.mapv(Relu::relu);
         //  (something)x(filter_height*filter_width*channel) matrix
-        let input_shape = &x.shape();
-        let (n_input, channel_count, input_height, input_width) = (
-            input_shape[0],
-            input_shape[1],
-            input_shape[2],
-            input_shape[3],
-        );
-        let weight_shape = &self.weights.shape();
-        // As of September 18th, filter_channel_count is 10 and not good
-        let (n_filter, filter_channel_count, filter_height, filter_width) = (
-            weight_shape[0],
-            weight_shape[1], // actually this (filter_channel_count) is ignored in
-            weight_shape[2],
-            weight_shape[3],
-        );
+        let (n_input, channel_count, input_height, input_width) = x.dim();
+        let (n_filter, filter_channel_count, filter_height, filter_width) = self.weights.dim();
         debug_assert_eq!(
             channel_count, filter_channel_count,
             "The number of channel in input and the number of channel in filter must match"
@@ -366,8 +352,9 @@ impl<'a> Layer<'a> for Convolution<'a> {
             "The number of filter must match the number of elements in bias"
         );
         let col_weight = weight_reshaped.t();
-        // col: something x reshaping_column_count
-        // col_weight: reshaping_column_count x n_filter
+        // In Numpy:
+        //   col: something x reshaping_column_count
+        //   col_weight: reshaping_column_count x n_filter
 
         // ndarray: inputs 90 × 75 and 250 × 3 are not compatible for matrix multiplication
         debug_assert_eq!(
@@ -381,7 +368,8 @@ impl<'a> Layer<'a> for Convolution<'a> {
         debug_assert_eq!(input_weight_multi.shape()[1], self.bias.shape()[0],
         "The number of columns in input_weight_multi should match the number of elements in bias");
         let out = input_weight_multi + &self.bias;
-        // out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
+        // In Numpy:
+        //   out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
         //        let out_shape = &out.shape();
         let out_shape_multi_sum = out.shape().iter().fold(1, |sum, val| sum * val);
         let out_reshaped_last_elem = out_shape_multi_sum / n_input / out_h / out_w;
@@ -397,18 +385,11 @@ impl<'a> Layer<'a> for Convolution<'a> {
 
     fn backward(&mut self, dout: &'a Matrix) -> Matrix {
         // FN, C, FH, FW = self.W.shape
-        let weight_shape = &self.weights.shape();
-        // As of September 18th, filter_channel_count is 10 and not good
-        let (n_filter, filter_channel_count, filter_height, filter_width) = (
-            weight_shape[0],
-            weight_shape[1], // actually this (filter_channel_count) is ignored in
-            weight_shape[2],
-            weight_shape[3],
-        );
+        let (n_filter, filter_channel_count, filter_height, filter_width) = self.weights.dim();
         // permuted_axes was complaining the borrowed reference. But calling view is enough
-        // dout = dout.transpose(0,2,3,1).reshape(-1, FN)
-        // let mut dout_copy: Array4<Elem> = Array::zeros(dout.raw_dim());
-        // dout_copy.assign(dout);
+
+        // In Numpy
+        //   dout = dout.transpose(0,2,3,1).reshape(-1, FN)
         let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
         let dout_transposed_dim_mul = dout_transposed.shape().iter().fold(1, |sum, val| sum * val);
         let reshape_row_count = dout_transposed_dim_mul / n_filter;
@@ -430,10 +411,10 @@ impl<'a> Layer<'a> for Convolution<'a> {
             .permuted_axes([1, 0])
             .into_shape((n_filter, filter_channel_count, filter_height, filter_width))
             .unwrap();
-
-        // dcol = np.dot(dout, self.col_W.T)
+        // In Numpy:
+        //   dcol = np.dot(dout, self.col_W.T)
+        //   dx = col2im(dcol, self.x.shape, FH, FW, self.stride, self.pad)
         let d_col = dout_reshaped.dot(&self.col_weight.t());
-        // dx = col2im(dcol, self.x.shape, FH, FW, self.stride, self.pad)
         let dx = col2im(
             &d_col,
             self.last_input.shape(),
