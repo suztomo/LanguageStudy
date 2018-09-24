@@ -43,6 +43,56 @@ pub trait Layer<'a> {
 }
 
 #[derive(Debug)]
+pub struct Pooling<'a> {
+    pool_h: usize,
+    pool_w: usize,
+    stride: usize,
+    pad: usize,
+    last_input: &'a Matrix, // x in the book. Owned?
+}
+
+impl<'a> Pooling<'a> {
+    pub fn new(pool_h: usize, pool_w: usize, stride: usize, pad: usize) -> Pooling<'a> {
+        let pooling = Pooling {
+            pool_h,
+            pool_w,
+            stride,
+            pad,
+            last_input: &INPUT_ARRAY4_ZERO,
+        };
+        pooling
+    }
+}
+
+impl<'a> Layer<'a> for Pooling<'a> {
+    fn forward(&mut self, x: &'a Matrix) -> Matrix {
+        self.last_input = x;
+        let (n_input, channel_count, input_height, input_width) = x.dim();
+        let out_h = 1 + (input_height - self.pool_h) / self.stride;
+        let out_w = 1 + (input_width - self.pool_w) / self.stride;
+        let input_col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad);
+        let col_rows_count =
+            input_col.shape().iter().fold(1, |sum, val| sum * val) / (self.pool_h * self.pool_w);
+        let reshaped_col_res = input_col.into_shape((col_rows_count, self.pool_h * self.pool_w));
+        let m = reshaped_col_res
+            .unwrap()
+            .fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
+        // out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
+        let reshaped_m_res = m.into_shape((n_input, out_h, out_w, channel_count));
+        let transposed_m = reshaped_m_res.unwrap().permuted_axes([0, 3, 1, 2]);
+
+        // arg_max = np.argmax(col, axis=1)
+        // ??
+
+        transposed_m
+    }
+    fn backward(&mut self, dout: &'a Matrix) -> Matrix {
+        let dmax = Array4::zeros(self.last_input.raw_dim());
+        dmax
+    }
+}
+
+#[derive(Debug)]
 pub struct Relu {
     mask: Matrix, // 0. or 1.
 }
@@ -556,4 +606,13 @@ fn convolution_forward_test() {
         input.shape(),
         "dx's shape must match the input's shape"
     );
+}
+
+#[test]
+fn pooling_forward_test() {
+    let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let dout = Array::random((10, 30, 3, 3), F32(Normal::new(0., 1.)));
+    let mut pooling_layer = Pooling::new(3, 3, 1, 0);
+    let r = pooling_layer.forward(&input);
+    assert_eq!(r.shape(), &[10, 3, 5, 5]);
 }
