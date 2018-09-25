@@ -49,6 +49,7 @@ pub struct Pooling<'a> {
     stride: usize,
     pad: usize,
     last_input: &'a Matrix, // x in the book. Owned?
+    argmax: Array1<usize>,
 }
 
 impl<'a> Pooling<'a> {
@@ -59,6 +60,7 @@ impl<'a> Pooling<'a> {
             stride,
             pad,
             last_input: &INPUT_ARRAY4_ZERO,
+            argmax: Array1::zeros(1),
         };
         pooling
     }
@@ -74,19 +76,31 @@ impl<'a> Layer<'a> for Pooling<'a> {
         let col_rows_count =
             input_col.shape().iter().fold(1, |sum, val| sum * val) / (self.pool_h * self.pool_w);
         let reshaped_col_res = input_col.into_shape((col_rows_count, self.pool_h * self.pool_w));
-        let m = reshaped_col_res
-            .unwrap()
-            .fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
+        let reshaped_col = reshaped_col_res.unwrap();
+        // arg_max = np.argmax(col, axis=1)
+        self.argmax = argmax(&reshaped_col, Axis(1));
+
+        // out = np.max(col, axis=1)
+        let m = reshaped_col.fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
         // out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
         let reshaped_m_res = m.into_shape((n_input, out_h, out_w, channel_count));
         let transposed_m = reshaped_m_res.unwrap().permuted_axes([0, 3, 1, 2]);
 
-        // arg_max = np.argmax(col, axis=1)
-        // ??
-
         transposed_m
     }
     fn backward(&mut self, dout: &'a Matrix) -> Matrix {
+        // In Numpy:
+        //   dout = dout.transpose(0, 2, 3, 1)
+        let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
+
+        let pool_size = self.pool_h * self.pool_w;
+        let dout_size: usize = dout.len();
+        let dmax = Array2::<Elem>::zeros((dout_size, pool_size));
+
+        // In Numpy:
+        //   dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
+        //   dmax = dmax.reshape(dout.shape + (pool_size,))
+
         let dmax = Array4::zeros(self.last_input.raw_dim());
         dmax
     }
@@ -615,4 +629,28 @@ fn pooling_forward_test() {
     let mut pooling_layer = Pooling::new(3, 3, 1, 0);
     let r = pooling_layer.forward(&input);
     assert_eq!(r.shape(), &[10, 3, 5, 5]);
+}
+
+fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
+    let find_maxarg = |a: ArrayView1<Elem>| -> usize {
+        let mut ret = 0;
+        let mut m = a[[ret]];
+        for i in 1..a.len() {
+            if a[[i]] > m {
+                ret = i;
+                m = a[[i]];
+            }
+        }
+        ret
+    };
+    let out = input.map_axis(axis, find_maxarg);
+    out
+}
+
+#[test]
+fn test_map_axis() {
+    let mut input = arr2(&[[4., 1., 2.], [3., 4., 5.]]);
+    // let out = input.map_axis(Axis(0), |a:ArrayView1<Elem>| a[[0]]);
+    let out = argmax(&mut input, Axis(0));
+    assert_eq!(out, arr1(&[0, 1, 1,]));
 }
