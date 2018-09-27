@@ -628,7 +628,13 @@ fn pooling_forward_test() {
     let dout = Array::random((10, 30, 3, 3), F32(Normal::new(0., 1.)));
     let mut pooling_layer = Pooling::new(3, 3, 1, 0);
     let r = pooling_layer.forward(&input);
+    let dx = pooling_layer.backward(&dout);
     assert_eq!(r.shape(), &[10, 3, 5, 5]);
+    assert_eq!(
+        dx.shape(),
+        &[10, 3, 7, 7],
+        "The dx shape should be the same as input"
+    );
 }
 
 fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
@@ -653,4 +659,15 @@ fn test_map_axis() {
     // let out = input.map_axis(Axis(0), |a:ArrayView1<Elem>| a[[0]]);
     let out = argmax(&mut input, Axis(0));
     assert_eq!(out, arr1(&[0, 1, 1,]));
+}
+
+#[test]
+fn test_relu() {
+    let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let dout = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let mut relu_layer = Relu::new();
+    let r = relu_layer.forward(&input);
+    assert_eq!(r.shape(), &[10, 3, 7, 7]);
+    let dx = relu_layer.backward(&dout);
+    assert_eq!(dx.shape(), &[10, 3, 7, 7]);
 }
