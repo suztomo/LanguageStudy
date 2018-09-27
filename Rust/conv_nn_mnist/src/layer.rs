@@ -133,7 +133,8 @@ impl<'a> Layer<'a> for Relu {
         out
     }
     fn backward(&mut self, dout: &'a Matrix) -> Matrix {
-        // 0 if mask is zero. 1 if mask is 1
+        // Element-wise multiplication; 0 if mask is zero. 1 if mask is 1
+        // This is not returning 1 for positive input. Is it ok?
         let dx = dout * &self.mask;
         dx
     }
@@ -663,11 +664,15 @@ fn test_map_axis() {
 
 #[test]
 fn test_relu() {
-    let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let mut input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    input[[1, 2, 3, 4]] = -5.;
     let dout = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    
     let mut relu_layer = Relu::new();
     let r = relu_layer.forward(&input);
     assert_eq!(r.shape(), &[10, 3, 7, 7]);
     let dx = relu_layer.backward(&dout);
     assert_eq!(dx.shape(), &[10, 3, 7, 7]);
+    assert_eq!(dx[[1, 2, 3, 4]], 0.,
+    "Relu backward should give zero for minus input");
 }
