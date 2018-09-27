@@ -667,12 +667,15 @@ fn test_relu() {
     let mut input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     input[[1, 2, 3, 4]] = -5.;
     let dout = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
-    
+
     let mut relu_layer = Relu::new();
     let r = relu_layer.forward(&input);
     assert_eq!(r.shape(), &[10, 3, 7, 7]);
     let dx = relu_layer.backward(&dout);
     assert_eq!(dx.shape(), &[10, 3, 7, 7]);
-    assert_eq!(dx[[1, 2, 3, 4]], 0.,
-    "Relu backward should give zero for minus input");
+    assert_eq!(
+        dx[[1, 2, 3, 4]],
+        0.,
+        "Relu backward should give zero for minus input"
+    );
 }
