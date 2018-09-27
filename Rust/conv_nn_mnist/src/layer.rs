@@ -7,6 +7,7 @@ use utils::math::sigmoid;
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
+    static ref INPUT_ARRAY2_ZERO: Array2<Elem> = Array::zeros((1, 1));
 }
 
 // The implementaiton of the book leverages the layer-based implementation
@@ -40,6 +41,43 @@ pub type Matrix = Array4<Elem>;
 pub trait Layer<'a> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix;
     fn backward(&mut self, dout: &'a Matrix) -> Matrix;
+}
+
+#[derive(Debug)]
+pub struct Affine<'a> {
+    weights: Array2<Elem>, // What's the dimension?
+    d_weights: Array2<Elem>,
+    last_input: &'a Array2<Elem>, // x in the book. Not owned
+    bias: Array1<Elem>,
+    d_bias: Array1<Elem>,
+}
+
+impl<'a> Affine<'a> {
+    pub fn new(input_size: usize, hidden_size: usize) -> Affine<'a> {
+        let layer = Affine {
+            // In Numpy, the weights shape is (pool_output_size, pool_output_size) and
+            //           the bias shape is (hidden_size)
+            //         self.params['W2'] = weight_init_std * \
+            //                 np.random.randn(pool_output_size, hidden_size)
+            //         self.params['b2'] = np.zeros(hidden_size)
+            weights: Array::random((input_size, hidden_size), F32(Normal::new(0., 1.))),
+            d_weights: Array2::zeros((1, 1)),
+            last_input: &INPUT_ARRAY2_ZERO,
+            // The filter_num matches the number of channels in output feature map
+            bias: Array1::zeros(hidden_size),
+            d_bias: Array1::zeros(hidden_size),
+        };
+        layer
+    }
+}
+
+impl<'a> Layer<'a> for Affine<'a> {
+    fn forward(&mut self, x: &'a Matrix) -> Matrix {
+        Array4::zeros((1, 1, 1, 1))
+    }
+    fn backward(&mut self, dout: &'a Matrix) -> Matrix {
+        Array4::zeros((1, 1, 1, 1))
+    }
 }
 
 #[derive(Debug)]
@@ -135,6 +173,7 @@ impl<'a> Layer<'a> for Relu {
     fn backward(&mut self, dout: &'a Matrix) -> Matrix {
         // Element-wise multiplication; 0 if mask is zero. 1 if mask is 1
         // This is not returning 1 for positive input. Is it ok?
+        // Hm. Derivative was only for changing weights.
         let dx = dout * &self.mask;
         dx
     }
@@ -678,4 +717,17 @@ fn test_relu() {
         0.,
         "Relu backward should give zero for minus input"
     );
+}
+
+#[test]
+fn test_affine() {
+    let mut input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+    input[[1, 2, 3, 4]] = -5.;
+    let dout = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
+
+    let mut layer = Affine::new(5, 3);
+    let r = layer.forward(&input);
+    assert_eq!(r.shape(), &[10, 3, 7, 7]);
+    let dx = layer.backward(&dout);
+    assert_eq!(dx.shape(), &[10, 3, 7, 7]);
 }
