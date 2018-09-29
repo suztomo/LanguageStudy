@@ -76,7 +76,7 @@ impl<'a> Affine {
   Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
 } 
 impl<'a> Layer<'a> for Affine {*/
-    fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
+    pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
         println!("Input dimension: {:?}", x.shape());
         let (n_input, channel_size, input_height, input_width) = x.dim();
@@ -96,7 +96,7 @@ impl<'a> Layer<'a> for Affine {*/
         // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
         output
     }
-    fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
+    pub fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
         // dot is only available via Array2 (Matrix)..
         let dx_matrix = dout.dot(&self.weights.t());
         self.d_weights = self.last_input_matrix.t().dot(dout);
@@ -218,12 +218,12 @@ impl<'a> Layer<'a> for Relu<Ix4> {
     }
 }
 impl Relu<Ix2> {
-    fn forward(&mut self, x: & Array2<Elem>) -> Array2<Elem> {
+    pub fn forward(&mut self, x: & Array2<Elem>) -> Array2<Elem> {
         let out = x.mapv(relu);
         self.mask = x.mapv(|x| if x < 0. { 0. } else { 1. });
         out
     }
-    fn backward(&mut self, dout: & Array2<Elem>) -> Array2<Elem> {
+    pub fn backward(&mut self, dout: & Array2<Elem>) -> Array2<Elem> {
         // Element-wise multiplication; 0 if mask is zero. 1 if mask is 1
         // This is not returning 1 for positive input. Is it ok?
         // Hm. Derivative was only for changing weights.

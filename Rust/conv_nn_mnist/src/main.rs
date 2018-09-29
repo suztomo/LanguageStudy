@@ -31,7 +31,7 @@ extern crate utils;
 use utils::math::sigmoid;
 
 mod layer;
-use layer::{Convolution, Layer, Matrix, Relu};
+use layer::{Convolution, Layer, Matrix, Relu, Affine};
 
 fn sigmoid_derivative(x: f32) -> f32 {
     // https://beckernick.github.io/sigmoid-derivative-neural-network/
@@ -286,9 +286,21 @@ impl MnistRecord {
 }
 
 fn main() {
+    // Initialize layers
+    let input = Array::zeros((1, 1, 1, 1));
     let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
-    let relu_layer = Relu::<Ix4>::new();
+    let mut affine_layer = Affine::new(100, 10);
+    let mut relu_layer = Relu::<Ix4>::new();
+    let mut relu2_layer = Relu::<Ix2>::new();
+
+    let conv_output = convolution_layer.forward(&input);
+    let relu_output = relu_layer.forward(&conv_output);
+    let affine_output = affine_layer.forward(&relu_output);
+    let relu2_output = relu2_layer.forward(&affine_output);
+    // Because relu2_layer and affine are not compliant with Layer (Array4)
+    // we cannot create vector for layers... how can we?
     let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer];
+    // let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer, &affine_layer];
     println!("layer array: {:?}", layer_vec.len());
 
     let label_table = LabelTable::new();
@@ -304,7 +316,6 @@ fn main() {
         .from_reader(file_test);
     let mut mnist_records: Vec<MnistRecord> = Vec::new();
     let mut mnist_records_test: Vec<MnistRecord> = Vec::new();
-    let mut nn = NeuralNetwork::new(100);
     let before_record = Instant::now();
     for result in rdr_test.records() {
         let mut array: [Grayscale; IMG_W_SIZE * IMG_W_SIZE] = [0.; IMG_W_SIZE * IMG_W_SIZE];
@@ -350,10 +361,6 @@ fn main() {
             dots: array,
             dots_array: dots_array2,
         };
-        // let y = label_table.label_to_array(mnist.label);
-        // nn.feed_forward(&mnist.dots_array);
-        // nn.back_prop(y);
-        // mnist.print();
         mnist_records.push(mnist);
     }
     println!(
@@ -361,7 +368,6 @@ fn main() {
         mnist_records.len(),
         before_record.elapsed().as_secs()
     );
-    println!("Starting training of {} hidden layer", nn.hidden_layer_size);
     let before_training = Instant::now();
     let epoch = 30;
     for i in 0..epoch {
@@ -369,8 +375,9 @@ fn main() {
         let mut correct_prediction = 0;
         for mnist in mnist_records.iter() {
             let y = label_table.label_to_array(mnist.label);
-            let predicted_label = nn.feed_forward(&mnist.dots_array);
-            nn.back_prop(y);
+            
+            // dummy
+            let predicted_label = 1;
             if predicted_label == mnist.label {
                 correct_prediction += 1;
             }
@@ -380,11 +387,6 @@ fn main() {
             let sample_index = thread_rng().gen_range(0, mnist_records.len());
             let mnist_sample = &mnist_records[sample_index as usize];
             mnist_sample.print();
-            let predicted_label = nn.feed_forward(&mnist_sample.dots_array);
-            println!(
-                "Predicted: {}\n--------------------------------",
-                predicted_label
-            );
         }
         println!(
             "Finished epoch {}. Prediction rate: {}",
@@ -399,7 +401,7 @@ fn main() {
     let mut test_count = 0;
     let mut test_correct_prediction = 0;
     for mnist in mnist_records_test.iter() {
-        let predicted_label = nn.feed_forward(&mnist.dots_array);
+        let predicted_label = 1; // nn.feed_forward(&mnist.dots_array);
         if predicted_label == mnist.label {
             test_correct_prediction += 1;
         }
@@ -428,12 +430,11 @@ fn array_label_test() {
 #[test]
 fn backprop_test() {
     let label_table = LabelTable::new();
-    let file_path = "mnist_train.csv";
+    let file_path = "mnist_test.csv";
     let file = File::open(file_path).unwrap();
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
         .from_reader(file);
-
     let mut mnist_records: Vec<MnistRecord> = Vec::new();
     let mut nn = NeuralNetwork::new(100);
     for result in rdr.records() {
