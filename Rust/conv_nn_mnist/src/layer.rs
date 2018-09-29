@@ -44,17 +44,19 @@ pub trait Layer<'a> {
 }
 
 #[derive(Debug)]
-pub struct Affine<'a> {
+pub struct Affine {
+    original_shape: [usize; 4],
     weights: Array2<Elem>, // What's the dimension?
     d_weights: Array2<Elem>,
-    last_input: &'a Array2<Elem>, // x in the book. Not owned
+    last_input_matrix: Array2<Elem>, // x in the book. Not owned
     bias: Array1<Elem>,
     d_bias: Array1<Elem>,
 }
 
-impl<'a> Affine<'a> {
-    pub fn new(input_size: usize, hidden_size: usize) -> Affine<'a> {
+impl<'a> Affine {
+    pub fn new(input_size: usize, hidden_size: usize) -> Affine {
         let layer = Affine {
+            original_shape: [0, 0, 0, 0],
             // In Numpy, the weights shape is (pool_output_size, pool_output_size) and
             //           the bias shape is (hidden_size)
             //         self.params['W2'] = weight_init_std * \
@@ -62,21 +64,45 @@ impl<'a> Affine<'a> {
             //         self.params['b2'] = np.zeros(hidden_size)
             weights: Array::random((input_size, hidden_size), F32(Normal::new(0., 1.))),
             d_weights: Array2::zeros((1, 1)),
-            last_input: &INPUT_ARRAY2_ZERO,
+            last_input_matrix: Array2::zeros((1, 1)),
             // The filter_num matches the number of channels in output feature map
             bias: Array1::zeros(hidden_size),
             d_bias: Array1::zeros(hidden_size),
         };
         layer
     }
-}
-
-impl<'a> Layer<'a> for Affine<'a> {
-    fn forward(&mut self, x: &'a Matrix) -> Matrix {
-        Array4::zeros((1, 1, 1, 1))
+/* Can Affine implement Layer so that the layer has consistency in input
+  and output shape? Problem is that Affine in the example code forwards
+  Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
+} 
+impl<'a> Layer<'a> for Affine {*/
+    fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
+        self.original_shape.clone_from_slice(x.shape());
+        println!("Input dimension: {:?}", x.shape());
+        let (n_input, channel_size, input_height, input_width) = x.dim();
+        let input_reshape_col_count = channel_size*input_height*input_width;
+//        let mut x_copy = Array4::zeros(x.raw_dim());
+//        x_copy.assign(x);
+        let x_copy = x.to_owned();
+        let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
+        self.last_input_matrix = reshaped_x_res.unwrap();
+        debug_assert_eq!(self.last_input_matrix.shape()[1], self.weights.shape()[0],
+        "The shape should match for matrix multiplication");
+        // inputs 10 × 147 and 5 × 3 are not compatible for matrix multiplication
+        let input_by_weights = self.last_input_matrix.dot(&self.weights);
+        let output = input_by_weights + &self.bias;
+        // Isn't output a matrix? It should output as (N, C, H, W).
+        // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
+        // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
+        output
     }
-    fn backward(&mut self, dout: &'a Matrix) -> Matrix {
-        Array4::zeros((1, 1, 1, 1))
+    fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
+        // dot is only available via Array2 (Matrix)..
+        let dx_matrix = dout.dot(&self.weights.t());
+        let dx_reshaped_res = dx_matrix.into_shape((self.original_shape[0], self.original_shape[1],
+        self.original_shape[2], self.original_shape[3]));
+        let dx_reshaped = dx_reshaped_res.unwrap();
+        dx_reshaped
     }
 }
 
@@ -723,11 +749,13 @@ fn test_relu() {
 fn test_affine() {
     let mut input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     input[[1, 2, 3, 4]] = -5.;
-    let dout = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
-
-    let mut layer = Affine::new(5, 3);
+    let dout = Array::random((10, 100), F32(Normal::new(0., 1.)));
+    let affine_input_size = 3 * 7 * 7;
+    let mut layer = Affine::new(affine_input_size, 100);
     let r = layer.forward(&input);
-    assert_eq!(r.shape(), &[10, 3, 7, 7]);
+    assert_eq!(layer.original_shape, [10, 3, 7, 7],
+    "Affine layer must remember original shape of input");
+    assert_eq!(r.shape(), &[10, 100]);
     let dx = layer.backward(&dout);
     assert_eq!(dx.shape(), &[10, 3, 7, 7]);
 }
