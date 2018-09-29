@@ -287,7 +287,7 @@ impl MnistRecord {
 
 fn main() {
     let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
-    let relu_layer = Relu::new();
+    let relu_layer = Relu::<Ix4>::new();
     let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer];
     println!("layer array: {:?}", layer_vec.len());
 

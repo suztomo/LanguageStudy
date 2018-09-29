@@ -99,6 +99,8 @@ impl<'a> Layer<'a> for Affine {*/
     fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
         // dot is only available via Array2 (Matrix)..
         let dx_matrix = dout.dot(&self.weights.t());
+        self.d_weights = self.last_input_matrix.t().dot(dout);
+        self.d_bias = dout.sum_axis(Axis(0));
         let dx_reshaped_res = dx_matrix.into_shape((self.original_shape[0], self.original_shape[1],
         self.original_shape[2], self.original_shape[3]));
         let dx_reshaped = dx_reshaped_res.unwrap();
@@ -171,28 +173,39 @@ impl<'a> Layer<'a> for Pooling<'a> {
 }
 
 #[derive(Debug)]
-pub struct Relu {
-    mask: Matrix, // 0. or 1.
+pub struct Relu<X> where X: Dimension {
+    mask: Array<Elem, X>, // 0. or 1.
 }
-impl Relu {
-    pub fn new() -> Relu {
+pub fn relu(x: Elem) -> Elem {
+    if x < 0. {
+        0.
+    } else {
+        x
+    }
+}
+
+impl Relu<Ix4> {
+    pub fn new() -> Relu<Ix4> {
         let s = Relu {
             // Initialize the mask at zero
             mask: Array4::zeros((1, 1, 1, 1)),
         };
         s
     }
-    pub fn relu(x: Elem) -> Elem {
-        if x < 0. {
-            0.
-        } else {
-            x
-        }
+}
+
+impl Relu<Ix2> {
+    pub fn new() -> Relu<Ix2> {
+        let s = Relu {
+            // Initialize the mask at zero
+            mask: Array2::zeros((1, 1)),
+        };
+        s
     }
 }
-impl<'a> Layer<'a> for Relu {
+impl<'a> Layer<'a> for Relu<Ix4> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
-        let out: Matrix = x.mapv(Relu::relu);
+        let out: Matrix = x.mapv(relu);
         self.mask = x.mapv(|x| if x < 0. { 0. } else { 1. });
         out
     }
@@ -204,6 +217,21 @@ impl<'a> Layer<'a> for Relu {
         dx
     }
 }
+impl Relu<Ix2> {
+    fn forward(&mut self, x: & Array2<Elem>) -> Array2<Elem> {
+        let out = x.mapv(relu);
+        self.mask = x.mapv(|x| if x < 0. { 0. } else { 1. });
+        out
+    }
+    fn backward(&mut self, dout: & Array2<Elem>) -> Array2<Elem> {
+        // Element-wise multiplication; 0 if mask is zero. 1 if mask is 1
+        // This is not returning 1 for positive input. Is it ok?
+        // Hm. Derivative was only for changing weights.
+        let dx = dout * &self.mask;
+        dx
+    }
+}
+
 
 fn im2col(
     input: &Array4<Elem>, // n_input, channel_count, input_height, input_width
@@ -728,12 +756,12 @@ fn test_map_axis() {
 }
 
 #[test]
-fn test_relu() {
+fn test_relu_array4() {
     let mut input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     input[[1, 2, 3, 4]] = -5.;
     let dout = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
 
-    let mut relu_layer = Relu::new();
+    let mut relu_layer = Relu::<Ix4>::new();
     let r = relu_layer.forward(&input);
     assert_eq!(r.shape(), &[10, 3, 7, 7]);
     let dx = relu_layer.backward(&dout);
@@ -744,6 +772,20 @@ fn test_relu() {
         "Relu backward should give zero for minus input"
     );
 }
+
+#[test]
+fn test_relu_array2() {
+    let mut input = Array::random((10, 3), F32(Normal::new(0., 1.)));
+    input[[1, 2]] = -5.;
+    let dout = Array::random((10, 3), F32(Normal::new(0., 1.)));
+
+    let mut relu_layer = Relu::<Ix2>::new();
+    let r = relu_layer.forward(&input);
+    assert_eq!(r.shape(), &[10, 3]);
+    let dx = relu_layer.backward(&dout);
+    assert_eq!(dx.shape(), &[10, 3]);
+}
+
 
 #[test]
 fn test_affine() {
