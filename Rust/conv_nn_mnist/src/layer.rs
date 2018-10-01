@@ -33,7 +33,7 @@ lazy_static! {
 //        out = np.dot(col, col_W) + self.b
 //        out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
 
-type Elem = f32;
+pub type Elem = f32;
 // Following the book's interface of having 4-dimensional array as input of each layer
 pub type Matrix = Array4<Elem>;
 
@@ -78,7 +78,6 @@ impl<'a> Affine {
 impl<'a> Layer<'a> for Affine {*/
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
-        println!("Input dimension: {:?}", x.shape());
         let (n_input, channel_size, input_height, input_width) = x.dim();
         let input_reshape_col_count = channel_size*input_height*input_width;
 //        let mut x_copy = Array4::zeros(x.raw_dim());
