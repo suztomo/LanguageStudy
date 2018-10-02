@@ -1,9 +1,9 @@
 extern crate csv;
-use std::fs::File;
-use std::time::Instant;
 use ansi_term::Colour::*;
 use ansi_term::{ANSIString, ANSIStrings, Style};
+use std::fs::File;
 use std::result::*;
+use std::time::Instant;
 
 use ndarray::prelude::*;
 
@@ -43,7 +43,8 @@ impl MnistRecord {
             let label: i32 = record[0].parse().unwrap();
             let vv: Vec<f32> = array.to_vec();
             //        let dots_array1: Array1<f32> = Array1::from_vec(vv);
-            let dots_array2: Array2<f32> = Array2::from_shape_vec((1, 784), vv).unwrap();
+            let dots_array2: Array2<f32> =
+                Array2::from_shape_vec((IMG_H_SIZE, IMG_W_SIZE), vv).unwrap();
             let mnist: MnistRecord = MnistRecord {
                 label,
                 dots: array,
@@ -51,9 +52,10 @@ impl MnistRecord {
             };
             mnist_records.push(mnist);
         }
-        println!("Read {} for {} MNIST records in {} secs",
+        println!(
+            "Read {} for {} MNIST records in {} secs",
             file_path,
-            mnist_records.len(), 
+            mnist_records.len(),
             before_record.elapsed().as_secs()
         );
         Ok(mnist_records)
@@ -92,5 +94,40 @@ impl MnistRecord {
     }
 }
 
+#[test]
+fn mnist_csv_load_test() {
+    let mnist_train_data_res = MnistRecord::load_from_csv("tests/mnist_test_10.csv");
+    assert!(mnist_train_data_res.is_ok());
+    let mnist_train_data: Vec<MnistRecord> = mnist_train_data_res.unwrap();
+    assert_eq!(mnist_train_data.len(), 10);
+    assert_eq!(
+        mnist_train_data[0].dots_array.shape(),
+        &[IMG_H_SIZE, IMG_W_SIZE]
+    );
+}
 
+#[test]
+fn mnist_csv_element_test() {
+    let mnist_train_data_res = MnistRecord::load_from_csv("tests/mnist_test_10.csv");
+    let mnist_train_data: Vec<MnistRecord> = mnist_train_data_res.unwrap();
+    let mnist_record = &mnist_train_data[0];
+    for i in 0..IMG_H_SIZE {
+        for j in 0..IMG_H_SIZE {
+            let item_dot = mnist_record.dots[IMG_H_SIZE * i + j];
+            let item_array2 = mnist_record.dots_array[[i, j]];
+            assert_eq!(
+                item_dot, item_array2,
+                "The contents in dot and array2 fields must be the same"
+            );
+        }
+    }
+}
 
+#[test]
+fn mnist_csv_load_test_no_such_file() {
+    let mnist_train_data_res = MnistRecord::load_from_csv("tests/no_such_file.csv");
+    assert!(
+        mnist_train_data_res.is_err(),
+        "It should return err rather than panicking"
+    );
+}

@@ -71,7 +71,7 @@ impl<'a> Affine {
         };
         layer
     }
-/* Can Affine implement Layer so that the layer has consistency in input
+    /* Can Affine implement Layer so that the layer has consistency in input
   and output shape? Problem is that Affine in the example code forwards
   Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
 } 
@@ -79,14 +79,17 @@ impl<'a> Layer<'a> for Affine {*/
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
         let (n_input, channel_size, input_height, input_width) = x.dim();
-        let input_reshape_col_count = channel_size*input_height*input_width;
-//        let mut x_copy = Array4::zeros(x.raw_dim());
-//        x_copy.assign(x);
+        let input_reshape_col_count = channel_size * input_height * input_width;
+        //        let mut x_copy = Array4::zeros(x.raw_dim());
+        //        x_copy.assign(x);
         let x_copy = x.to_owned();
         let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
         self.last_input_matrix = reshaped_x_res.unwrap();
-        debug_assert_eq!(self.last_input_matrix.shape()[1], self.weights.shape()[0],
-        "The shape should match for matrix multiplication");
+        debug_assert_eq!(
+            self.last_input_matrix.shape()[1],
+            self.weights.shape()[0],
+            "The shape should match for matrix multiplication"
+        );
         // inputs 10 × 147 and 5 × 3 are not compatible for matrix multiplication
         let input_by_weights = self.last_input_matrix.dot(&self.weights);
         let output = input_by_weights + &self.bias;
@@ -100,8 +103,12 @@ impl<'a> Layer<'a> for Affine {*/
         let dx_matrix = dout.dot(&self.weights.t());
         self.d_weights = self.last_input_matrix.t().dot(dout);
         self.d_bias = dout.sum_axis(Axis(0));
-        let dx_reshaped_res = dx_matrix.into_shape((self.original_shape[0], self.original_shape[1],
-        self.original_shape[2], self.original_shape[3]));
+        let dx_reshaped_res = dx_matrix.into_shape((
+            self.original_shape[0],
+            self.original_shape[1],
+            self.original_shape[2],
+            self.original_shape[3],
+        ));
         let dx_reshaped = dx_reshaped_res.unwrap();
         dx_reshaped
     }
@@ -172,7 +179,10 @@ impl<'a> Layer<'a> for Pooling<'a> {
 }
 
 #[derive(Debug)]
-pub struct Relu<X> where X: Dimension {
+pub struct Relu<X>
+where
+    X: Dimension,
+{
     mask: Array<Elem, X>, // 0. or 1.
 }
 pub fn relu(x: Elem) -> Elem {
@@ -217,12 +227,12 @@ impl<'a> Layer<'a> for Relu<Ix4> {
     }
 }
 impl Relu<Ix2> {
-    pub fn forward(&mut self, x: & Array2<Elem>) -> Array2<Elem> {
+    pub fn forward(&mut self, x: &Array2<Elem>) -> Array2<Elem> {
         let out = x.mapv(relu);
         self.mask = x.mapv(|x| if x < 0. { 0. } else { 1. });
         out
     }
-    pub fn backward(&mut self, dout: & Array2<Elem>) -> Array2<Elem> {
+    pub fn backward(&mut self, dout: &Array2<Elem>) -> Array2<Elem> {
         // Element-wise multiplication; 0 if mask is zero. 1 if mask is 1
         // This is not returning 1 for positive input. Is it ok?
         // Hm. Derivative was only for changing weights.
@@ -230,7 +240,6 @@ impl Relu<Ix2> {
         dx
     }
 }
-
 
 fn im2col(
     input: &Array4<Elem>, // n_input, channel_count, input_height, input_width
@@ -785,7 +794,6 @@ fn test_relu_array2() {
     assert_eq!(dx.shape(), &[10, 3]);
 }
 
-
 #[test]
 fn test_affine() {
     let mut input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
@@ -794,8 +802,11 @@ fn test_affine() {
     let affine_input_size = 3 * 7 * 7;
     let mut layer = Affine::new(affine_input_size, 100);
     let r = layer.forward(&input);
-    assert_eq!(layer.original_shape, [10, 3, 7, 7],
-    "Affine layer must remember original shape of input");
+    assert_eq!(
+        layer.original_shape,
+        [10, 3, 7, 7],
+        "Affine layer must remember original shape of input"
+    );
     assert_eq!(r.shape(), &[10, 100]);
     let dx = layer.backward(&dout);
     assert_eq!(dx.shape(), &[10, 3, 7, 7]);

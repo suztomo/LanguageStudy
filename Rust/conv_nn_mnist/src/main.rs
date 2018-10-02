@@ -19,7 +19,7 @@ extern crate ndarray_rand;
 extern crate rand;
 
 use ndarray_rand::{RandomExt, F32};
-use rand::distributions::{Normal, IndependentSample, Range};
+use rand::distributions::{IndependentSample, Normal, Range};
 use rand::{thread_rng, Rng};
 // use rand::Rng;
 use ndarray::prelude::*;
@@ -27,9 +27,9 @@ extern crate utils;
 use utils::math::sigmoid;
 
 mod layer;
-use layer::{Convolution, Elem, Layer, Matrix, Relu, Affine};
+use layer::{Affine, Convolution, Elem, Layer, Matrix, Relu};
 mod mnist;
-use mnist::{MnistRecord, IMG_W_SIZE, IMG_H_SIZE, Grayscale};
+use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 
 fn sigmoid_derivative(x: f32) -> f32 {
     // https://beckernick.github.io/sigmoid-derivative-neural-network/
@@ -108,16 +108,15 @@ impl LabelTable {
  * the Array4 of (N, C, H, W) for Convolutional Neural Network input
  * and the labels of N
  */
-fn generate_conv_input_array4(mnist_record: &Vec<MnistRecord>, n_input: usize) -> (Matrix, Vec<i32>) {
+fn generate_conv_input_array4(
+    mnist_record: &Vec<MnistRecord>,
+    n_input: usize,
+) -> (Matrix, Vec<i32>) {
     let channel_count = 1; // MNIST is grayscale
     let mut rng = rand::thread_rng();
     let mut answer_labels = Vec::<i32>::new();
-    let mut ret: Array4<Elem> = Array4::<Elem>::zeros((
-        n_input,
-        channel_count,
-        IMG_H_SIZE,
-        IMG_W_SIZE
-    ));
+    let mut ret: Array4<Elem> =
+        Array4::<Elem>::zeros((n_input, channel_count, IMG_H_SIZE, IMG_W_SIZE));
     for i in 0..n_input {
         let t = thread_rng().gen_range(0, mnist_record.len());
         let mut assign_mut = ret.slice_mut(s![i, 0, .., ..]);
@@ -147,8 +146,10 @@ fn main() {
     println!("layer array: {:?}", layer_vec.len());
 
     let label_table = LabelTable::new();
-    let mnist_records_train: Vec<MnistRecord> = MnistRecord::load_from_csv("mnist_train.csv").unwrap();
-    let mnist_records_test: Vec<MnistRecord> = MnistRecord::load_from_csv("mnist_test.csv").unwrap();
+    let mnist_records_train: Vec<MnistRecord> =
+        MnistRecord::load_from_csv("mnist_train.csv").unwrap();
+    let mnist_records_test: Vec<MnistRecord> =
+        MnistRecord::load_from_csv("mnist_test.csv").unwrap();
     let before_training = Instant::now();
     let epoch = 30;
     for i in 0..epoch {
@@ -249,3 +250,10 @@ fn backprop_test() {
     }
 }
 
+#[test]
+fn test_generate_conv_input_array4() {
+    let mnist_train_data_res = MnistRecord::load_from_csv("tests/mnist_test_10.csv");
+    let mnist_train_data: Vec<MnistRecord> = mnist_train_data_res.unwrap();
+    let (m, answers) = generate_conv_input_array4(&mnist_train_data, 10);
+    assert_eq!(m.shape(), &[10, 1, 28, 28], "10 input, channel 1 (grayscale), width: 28 and height:28");
+}
