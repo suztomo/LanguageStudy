@@ -179,6 +179,32 @@ impl<'a> Layer<'a> for Pooling<'a> {
 }
 
 #[derive(Debug)]
+pub struct SoftmaxWithLoss {
+    y: Array2<Elem>, // output
+    t: Array2<Elem>, // answers
+    loss: Array2<Elem>,
+}
+
+impl SoftmaxWithLoss {
+    pub fn new() -> SoftmaxWithLoss {
+        let layer = SoftmaxWithLoss {
+            y: Array::zeros((1, 1)),
+            t: Array::zeros((1, 1)),
+            loss: Array::zeros((1, 1)),
+        };
+        layer
+    }
+    pub fn forward(&mut self, x: &Array2<Elem>) -> Array2<Elem> {
+        // What's softmax for 2 dimensional array?
+        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L31
+        Array::zeros(x.dim())
+    }
+    pub fn backward(&mut self, dout: &Array2<Elem>) -> Array2<Elem> {
+        Array::zeros((1, 1))
+    }
+}
+
+#[derive(Debug)]
 pub struct Relu<X>
 where
     X: Dimension,
@@ -810,4 +836,12 @@ fn test_affine() {
     assert_eq!(r.shape(), &[10, 100]);
     let dx = layer.backward(&dout);
     assert_eq!(dx.shape(), &[10, 3, 7, 7]);
+}
+
+#[test]
+fn test_softmax_with_loss() {
+    let input = Array::random((10, 3), F32(Normal::new(0., 1.)));
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let output = softmax_with_loss_layer.forward(&input);
+    assert_eq!(output.shape(), &[10, 3]);
 }

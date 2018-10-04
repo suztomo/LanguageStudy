@@ -255,5 +255,9 @@ fn test_generate_conv_input_array4() {
     let mnist_train_data_res = MnistRecord::load_from_csv("tests/mnist_test_10.csv");
     let mnist_train_data: Vec<MnistRecord> = mnist_train_data_res.unwrap();
     let (m, answers) = generate_conv_input_array4(&mnist_train_data, 10);
-    assert_eq!(m.shape(), &[10, 1, 28, 28], "10 input, channel 1 (grayscale), width: 28 and height:28");
+    assert_eq!(
+        m.shape(),
+        &[10, 1, 28, 28],
+        "10 input, channel 1 (grayscale), width: 28 and height:28"
+    );
 }
