@@ -185,6 +185,18 @@ pub struct SoftmaxWithLoss {
     loss: Array2<Elem>,
 }
 
+fn softmax_array2(x: Array2<Elem>) -> Array2<Elem> {
+    let x_t = x.t();
+    //  x = x - np.max(x, axis=0)
+    //        let m = reshaped_col.fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
+    let x_max = x_t.fold_axis(Axis(0), -1000000., |m, i| if *i < *m { *m } else { *i });
+    let x_diff_max = &x_t - &x_max;
+    let x_exp = x_diff_max.mapv(|x| x.exp());
+    let sum_x_exp = x_exp.sum_axis(Axis(0));
+    let y = x_exp / &sum_x_exp;
+    y.reversed_axes()
+}
+
 impl SoftmaxWithLoss {
     pub fn new() -> SoftmaxWithLoss {
         let layer = SoftmaxWithLoss {
@@ -844,4 +856,15 @@ fn test_softmax_with_loss() {
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let output = softmax_with_loss_layer.forward(&input);
     assert_eq!(output.shape(), &[10, 3]);
+}
+
+#[test]
+fn test_softmax_array2() {
+    let input = Array::random((2, 3), F32(Normal::new(0., 1.)));
+    let res = softmax_array2(input);
+    assert_eq!(res.shape(), &[2, 3]);
+    let sum = res.sum_axis(Axis(1));
+    assert_eq!(sum.shape(), &[2]);
+    assert_eq!(sum[[0]], 1., "The sum of each row should be 1");
+    assert_eq!(sum[[1]], 1., "The sum of each row should be 1");
 }
