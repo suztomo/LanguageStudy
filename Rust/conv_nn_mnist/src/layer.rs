@@ -197,6 +197,24 @@ fn softmax_array2(x: Array2<Elem>) -> Array2<Elem> {
     y.reversed_axes()
 }
 
+fn cross_entropy_error(y: Array2<Elem>, t: Array2<Elem>) -> Elem {
+    // The first dimension is for mini-batch 
+    let batch_size = y.shape()[0];
+
+    // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L46
+    // Convert one-hot vector to teacher labelling
+    let answer_labels = argmax(&t, Axis(1));
+    debug_assert_eq!(answer_labels.shape(), &[batch_size]);
+
+    // For each batch, get each value of y
+
+    // -np.sum(np.log(y[np.arange(batch_size), t] + 1e-7)) / batch_size
+    // It seems this calculates values of errors across batches
+    // The first time to mix data across batches
+
+    0.
+}
+
 impl SoftmaxWithLoss {
     pub fn new() -> SoftmaxWithLoss {
         let layer = SoftmaxWithLoss {
@@ -865,6 +883,36 @@ fn test_softmax_array2() {
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
     assert_eq!(sum.shape(), &[2]);
-    assert_eq!(sum[[0]], 1., "The sum of each row should be 1");
-    assert_eq!(sum[[1]], 1., "The sum of each row should be 1");
+    
+    // The sum of each row should be 1
+    assert_approx_eq!(sum[[0]], 1.);
+    // The sum of each row should be 1
+    assert_approx_eq!(sum[[1]], 1.);
+}
+
+#[test]
+fn test_argmax_array2() {
+    // fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
+    let mut input = Array2::zeros((3, 4));
+    input[[2, 0]] = 1.2;
+    input[[1, 1]] = 1.3;
+    input[[2, 2]] = 1.5;
+    input[[1, 2]] = 1.4;
+    input[[1, 3]] = 1.4;
+    let output = argmax(&input, Axis(0));
+    assert_eq!(output, arr1(&[2, 1, 2, 1]));
+}
+
+#[test]
+fn test_cross_entropy_error() {
+    let mut input = Array::random((5, 10), F32(Normal::new(0., 1.)));
+    let mut t = Array2::zeros((5, 10));
+    for i in 0..5 {
+        // For i-th batch, the answer is i
+        t[[i, i]] = 1.;
+        input[[i, i]] = 1.;
+    }
+    
+    let ret = cross_entropy_error(input, t);
+    assert_eq!(ret, 0.);
 }

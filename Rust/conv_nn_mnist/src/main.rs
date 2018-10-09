@@ -7,6 +7,9 @@ use std::fs::File;
 use std::time::Instant;
 use std::{thread, time};
 
+#[macro_use]
+extern crate assert_approx_eq;
+
 extern crate ansi_term;
 
 #[macro_use]
