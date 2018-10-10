@@ -212,7 +212,12 @@ fn cross_entropy_error(y: Array2<Elem>, t: Array2<Elem>) -> Elem {
     // It seems this calculates values of errors across batches
     // The first time to mix data across batches
 
-    0.
+    let mut sum = 1e-7;
+    for i in 0..batch_size {
+        let answer_index = answer_labels[i];
+        sum += y[[i, answer_index]].log2();
+    }
+    -sum / (batch_size as Elem)
 }
 
 impl SoftmaxWithLoss {
@@ -914,5 +919,5 @@ fn test_cross_entropy_error() {
     }
     
     let ret = cross_entropy_error(input, t);
-    assert_eq!(ret, 0.);
+    assert_approx_eq!(ret, 0.);
 }
