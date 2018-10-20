@@ -181,11 +181,17 @@ impl<'a> Layer<'a> for Pooling<'a> {
 #[derive(Debug)]
 pub struct SoftmaxWithLoss {
     y: Array2<Elem>, // output
-    t: Array2<Elem>, // answers
+    t: Array1<i32>, // answers for each input
     loss: Array2<Elem>,
 }
 
-fn softmax_array2(x: Array2<Elem>) -> Array2<Elem> {
+fn softmax_array2(x: &Array2<Elem>) -> Array2<Elem> {
+    // [ [0.1, 0.5, 0.8],   1st data
+    //   [0.3, 0.2, 0.9] ]  2nd data
+    // then softmax is to make the biggest bigger, smallers to smaller:
+    // [ [0.01, 0.05, 0.94],
+    //   [0.03, 0.02, 0.95] ]
+
     let x_t = x.t();
     //  x = x - np.max(x, axis=0)
     //        let m = reshaped_col.fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
@@ -224,14 +230,18 @@ impl SoftmaxWithLoss {
     pub fn new() -> SoftmaxWithLoss {
         let layer = SoftmaxWithLoss {
             y: Array::zeros((1, 1)),
-            t: Array::zeros((1, 1)),
+            t: Array::zeros((1)),
             loss: Array::zeros((1, 1)),
         };
         layer
     }
-    pub fn forward(&mut self, x: &Array2<Elem>) -> Array2<Elem> {
+    pub fn forward(&mut self, x: &Array2<Elem>, t: &Array1<i32>) -> Array2<Elem> {
+        debug_assert_eq!(x.shape()[0], t.shape()[0]);
+
         // What's softmax for 2 dimensional array?
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L31
+        self.t = t.to_owned();
+        self.y = softmax_array2(x);
         Array::zeros(x.dim())
     }
     pub fn backward(&mut self, dout: &Array2<Elem>) -> Array2<Elem> {
@@ -877,14 +887,15 @@ fn test_affine() {
 fn test_softmax_with_loss() {
     let input = Array::random((10, 3), F32(Normal::new(0., 1.)));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
-    let output = softmax_with_loss_layer.forward(&input);
+    let answer_array1 = Array1::from_vec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 0]);
+    let output = softmax_with_loss_layer.forward(&input, &answer_array1);
     assert_eq!(output.shape(), &[10, 3]);
 }
 
 #[test]
 fn test_softmax_array2() {
     let input = Array::random((2, 3), F32(Normal::new(0., 1.)));
-    let res = softmax_array2(input);
+    let res = softmax_array2(&input);
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
     assert_eq!(sum.shape(), &[2]);

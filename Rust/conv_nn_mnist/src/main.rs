@@ -1,7 +1,7 @@
 // Implementation of Convolutional Neural Network for MNIST
 // The implementation is from
 //   ゼロから作るDeep Learning ――Pythonで学ぶディープラーニングの理論と実装
-// Sample Code https://github.com/oreilly-japan/deep-learning-from-scratch in Python
+// Sample Code https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py in Python
 extern crate csv;
 use std::fs::File;
 use std::time::Instant;
@@ -30,7 +30,7 @@ extern crate utils;
 use utils::math::sigmoid;
 
 mod layer;
-use layer::{Affine, Convolution, Elem, Layer, Matrix, Relu};
+use layer::{Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
 mod mnist;
 use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 
@@ -45,23 +45,6 @@ const ACTIVATION_PRIME: &Fn(f32) -> f32 = &sigmoid_derivative;
 
 fn activation_array(input: &Array2<f32>) -> Array2<f32> {
     input.mapv(ACTIVATION)
-}
-
-// Tanh doesn't work as the range is -1 to + 1
-//const ACTIVATION:&Fn(f32) -> f32 = &tanh;
-//const ACTIVATION_PRIME: &Fn(f32) -> f32 = &tanh_prime;
-
-#[derive(Debug)]
-struct NeuralNetwork<'a> {
-    hidden_layer_size: usize,
-    // <row count> x <column count>
-    last_input: &'a Array2<f32>, // Input 1 x 784 (28x28)
-    weight1: Array2<f32>,        // 784 x 100
-    layer1_a: Array2<f32>,       // 1 x 100, before activation
-    layer1: Array2<f32>,         // 1 x 100
-    weight2: Array2<f32>,        // 100 x 10
-    last_output_a: Array2<f32>, // 1 x 10. before activation. PRML uses 'a' for before activation. 'z' for after activation.
-    last_output: Array2<f32>,   // 1 x 10 // one-hot representation for 10 digits (0-9)
 }
 
 lazy_static! {
@@ -121,7 +104,7 @@ fn generate_conv_input_array4(
     let mut ret: Array4<Elem> =
         Array4::<Elem>::zeros((n_input, channel_count, IMG_H_SIZE, IMG_W_SIZE));
     for i in 0..n_input {
-        let t = thread_rng().gen_range(0, mnist_record.len());
+        let t = rng.gen_range(0, mnist_record.len());
         let mut assign_mut = ret.slice_mut(s![i, 0, .., ..]);
         let record = &mnist_record[t];
         assign_mut.assign(&record.dots_array);
@@ -131,52 +114,49 @@ fn generate_conv_input_array4(
 }
 
 fn main() {
-    // Initialize layers
-    let input = Array::zeros((1, 1, 1, 1));
-    let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
-    let mut affine_layer = Affine::new(100, 10);
-    let mut relu_layer = Relu::<Ix4>::new();
-    let mut relu2_layer = Relu::<Ix2>::new();
-
-    let conv_output = convolution_layer.forward(&input);
-    let relu_output = relu_layer.forward(&conv_output);
-    let affine_output = affine_layer.forward(&relu_output);
-    let relu2_output = relu2_layer.forward(&affine_output);
-    // Because relu2_layer and affine are not compliant with Layer (Array4)
-    // we cannot create vector for layers... how can we?
-    let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer];
-    // let layer_vec: Vec<&Layer> = vec![&convolution_layer, &relu_layer, &affine_layer];
-    println!("layer array: {:?}", layer_vec.len());
-
-    let label_table = LabelTable::new();
     let mnist_records_train: Vec<MnistRecord> =
         MnistRecord::load_from_csv("mnist_train.csv").unwrap();
     let mnist_records_test: Vec<MnistRecord> =
         MnistRecord::load_from_csv("mnist_test.csv").unwrap();
+    let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, 10);
+    let answer_array1 = Array1::from_vec(answers);
+
+    // Initialize layers
+    let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
+    let mut affine_layer = Affine::new(100, 10);
+    let mut relu_layer = Relu::<Ix4>::new();
+    let mut relu2_layer = Relu::<Ix2>::new();
+    let mut affine2_layer = Affine::new(100, 10);
+    let mut softmax_layer = SoftmaxWithLoss::new();
+
+    let label_table = LabelTable::new();
     let before_training = Instant::now();
     let epoch = 30;
     for i in 0..epoch {
         let mut total_count = 0;
         let mut correct_prediction = 0;
-        for mnist in mnist_records_train.iter() {
-            let y = label_table.label_to_array(mnist.label);
-            // dummy
-            let predicted_label = 1;
-            if predicted_label == mnist.label {
-                correct_prediction += 1;
-            }
-            total_count += 1;
+
+        // 4-dimensional data of (N-data, Channel, Height, Width)
+        {
+            // Forward
+
+            // nchw: borrowed value does not live long enough
+            // hchw is used only to train the internal values of the layer
+            let conv_output = convolution_layer.forward(&nchw);
+            let relu_output = relu_layer.forward(&conv_output);
+            let affine_output = affine_layer.forward(&relu_output);
+            let relu2_output = relu2_layer.forward(&affine_output);
+            //let affine2_output = affine2_layer.forward(&relu2_output);
+
+            let softmax_output = softmax_layer.forward(&relu2_output, &answer_array1);
+
+            // Backward?
+            println!(
+                "Finished epoch {}. Prediction rate: {}",
+                i,
+                (correct_prediction as f32) / (total_count as f32)
+            );
         }
-        for i in 0..3 {
-            let sample_index = thread_rng().gen_range(0, mnist_records_train.len());
-            let mnist_sample = &mnist_records_train[sample_index as usize];
-            mnist_sample.print();
-        }
-        println!(
-            "Finished epoch {}. Prediction rate: {}",
-            i,
-            (correct_prediction as f32) / (total_count as f32)
-        );
     }
     println!(
         "Finished training in {} secs",
@@ -263,4 +243,31 @@ fn test_generate_conv_input_array4() {
         &[10, 1, 28, 28],
         "10 input, channel 1 (grayscale), width: 28 and height:28"
     );
+}
+
+
+struct S<'a> {
+    counter: i32,
+    by: &'a i32
+}
+impl<'a> S<'a> {
+    pub fn increment(&mut self) {
+        self.counter  += 1;
+    }
+    pub fn increment_by(&mut self, inc: &'a i32) {
+        self.counter += *inc;
+        self.by = inc;
+    }
+}
+
+#[test]
+fn test_struct_reference() {
+    let mut s = S{ counter: 0 };
+    for i in 0..10 {
+        let k = i + 5;
+        s.increment_by(&k);
+        println!("i = {}", i);
+
+    }
+    println!("S.counter = {}", s.counter);
 }
