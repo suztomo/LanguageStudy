@@ -97,10 +97,10 @@ impl LabelTable {
 fn generate_conv_input_array4(
     mnist_record: &Vec<MnistRecord>,
     n_input: usize,
-) -> (Matrix, Vec<i32>) {
+) -> (Matrix, Vec<usize>) {
     let channel_count = 1; // MNIST is grayscale
     let mut rng = rand::thread_rng();
-    let mut answer_labels = Vec::<i32>::new();
+    let mut answer_labels = Vec::<usize>::new();
     let mut ret: Array4<Elem> =
         Array4::<Elem>::zeros((n_input, channel_count, IMG_H_SIZE, IMG_W_SIZE));
     for i in 0..n_input {
@@ -118,15 +118,14 @@ fn main() {
         MnistRecord::load_from_csv("mnist_train.csv").unwrap();
     let mnist_records_test: Vec<MnistRecord> =
         MnistRecord::load_from_csv("mnist_test.csv").unwrap();
-    let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, 10);
-    let answer_array1 = Array1::from_vec(answers);
 
     // Initialize layers
-    let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
-    let mut affine_layer = Affine::new(100, 10);
+    let padding = 2; // To make 24x24 to 28x28
+    let mut convolution_layer = Convolution::new(10, 30, 1, 5, 5, 1, padding);
+    let mut affine_layer = Affine::new(30 * 28 * 28, 10);
     let mut relu_layer = Relu::<Ix4>::new();
     let mut relu2_layer = Relu::<Ix2>::new();
-    let mut affine2_layer = Affine::new(100, 10);
+    let mut affine2_layer = Affine::new(17280, 10);
     let mut softmax_layer = SoftmaxWithLoss::new();
 
     let label_table = LabelTable::new();
@@ -140,22 +139,33 @@ fn main() {
         {
             // Forward
 
+            // This 10 must match the first argument for Convolution::new.
+            let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, 10);
+            let answer_array1 = Array1::from_vec(answers);
+
             // nchw: borrowed value does not live long enough
             // hchw is used only to train the internal values of the layer
             let conv_output = convolution_layer.forward(&nchw);
+            if i == 0 {
+                println!("conv_output shape: {:?}", conv_output.shape());
+            }
             let relu_output = relu_layer.forward(&conv_output);
+            if i == 0 {
+                println!("relu_output shape: {:?}", relu_output.shape());
+            }
             let affine_output = affine_layer.forward(&relu_output);
+            if i == 0 {
+                println!("affine_output shape: {:?}", affine_output.shape());
+            }
             let relu2_output = relu2_layer.forward(&affine_output);
             //let affine2_output = affine2_layer.forward(&relu2_output);
-
+            if i == 0 {
+                println!("relu2_output shape: {:?}", relu2_output.shape());
+            }
             let softmax_output = softmax_layer.forward(&relu2_output, &answer_array1);
 
             // Backward?
-            println!(
-                "Finished epoch {}. Prediction rate: {}",
-                i,
-                (correct_prediction as f32) / (total_count as f32)
-            );
+            println!("Finished epoch {}. softmax_output: {}", i, softmax_output);
         }
     }
     println!(
@@ -245,29 +255,27 @@ fn test_generate_conv_input_array4() {
     );
 }
 
-
-struct S<'a> {
+struct S {
     counter: i32,
-    by: &'a i32
 }
-impl<'a> S<'a> {
+impl<'a> S {
     pub fn increment(&mut self) {
-        self.counter  += 1;
+        self.counter += 1;
     }
-    pub fn increment_by(&mut self, inc: &'a i32) {
-        self.counter += *inc;
-        self.by = inc;
+    pub fn increment_by(&mut self, inc: &'a Vec<i32>) {
+        for i in inc.iter() {
+            self.counter += i;
+        }
     }
 }
 
 #[test]
 fn test_struct_reference() {
-    let mut s = S{ counter: 0 };
+    let mut s = S { counter: 0 };
     for i in 0..10 {
-        let k = i + 5;
-        s.increment_by(&k);
+        let v = &vec![1, 2, 3];
+        s.increment_by(&v);
         println!("i = {}", i);
-
     }
     println!("S.counter = {}", s.counter);
 }

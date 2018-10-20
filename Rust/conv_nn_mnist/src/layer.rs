@@ -48,7 +48,7 @@ pub struct Affine {
     original_shape: [usize; 4],
     weights: Array2<Elem>, // What's the dimension?
     d_weights: Array2<Elem>,
-    last_input_matrix: Array2<Elem>, // x in the book. Not owned
+    last_input_matrix: Array2<Elem>, // x in the book. Owned
     bias: Array1<Elem>,
     d_bias: Array1<Elem>,
 }
@@ -80,9 +80,10 @@ impl<'a> Layer<'a> for Affine {*/
         self.original_shape.clone_from_slice(x.shape());
         let (n_input, channel_size, input_height, input_width) = x.dim();
         let input_reshape_col_count = channel_size * input_height * input_width;
-        //        let mut x_copy = Array4::zeros(x.raw_dim());
-        //        x_copy.assign(x);
-        let x_copy = x.to_owned();
+        let mut x_copy = Array::zeros(x.raw_dim());
+        x_copy.assign(x);
+        // The below raised 'ShapeError/IncompatibleLayout: incompatible memory layout' at unwrap
+        // let x_copy = x.to_owned();
         let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
         self.last_input_matrix = reshaped_x_res.unwrap();
         debug_assert_eq!(
@@ -90,6 +91,10 @@ impl<'a> Layer<'a> for Affine {*/
             self.weights.shape()[0],
             "The shape should match for matrix multiplication"
         );
+        // Problem at October 20th
+        //   left: `17280`,    <- Where is it coming from. It's not multiply of 28*28
+        //   right: `100`: The shape should match for matrix multiplication', src/layer.rs:89:9
+
         // inputs 10 × 147 and 5 × 3 are not compatible for matrix multiplication
         let input_by_weights = self.last_input_matrix.dot(&self.weights);
         let output = input_by_weights + &self.bias;
@@ -180,9 +185,9 @@ impl<'a> Layer<'a> for Pooling<'a> {
 
 #[derive(Debug)]
 pub struct SoftmaxWithLoss {
-    y: Array2<Elem>, // output
-    t: Array1<i32>, // answers for each input
-    loss: Array2<Elem>,
+    y: Array2<Elem>,  // output
+    t: Array1<usize>, // answers for each input
+    loss: Elem,
 }
 
 fn softmax_array2(x: &Array2<Elem>) -> Array2<Elem> {
@@ -203,13 +208,13 @@ fn softmax_array2(x: &Array2<Elem>) -> Array2<Elem> {
     y.reversed_axes()
 }
 
-fn cross_entropy_error(y: Array2<Elem>, t: Array2<Elem>) -> Elem {
-    // The first dimension is for mini-batch 
+fn cross_entropy_error(y: &Array2<Elem>, answer_labels: &Array1<usize>) -> Elem {
+    // The first dimension is for mini-batch
     let batch_size = y.shape()[0];
 
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L46
-    // Convert one-hot vector to teacher labelling
-    let answer_labels = argmax(&t, Axis(1));
+    // If answer is given one-hot vector, convert one-hot vector to teacher labelling
+    // let answer_labels = argmax(&t, Axis(1));
     debug_assert_eq!(answer_labels.shape(), &[batch_size]);
 
     // For each batch, get each value of y
@@ -218,10 +223,10 @@ fn cross_entropy_error(y: Array2<Elem>, t: Array2<Elem>) -> Elem {
     // It seems this calculates values of errors across batches
     // The first time to mix data across batches
 
-    let mut sum = 1e-7;
+    let mut sum = 0.;
     for i in 0..batch_size {
         let answer_index = answer_labels[i];
-        sum += y[[i, answer_index]].log2();
+        sum += (y[[i, answer_index]] + 1e-7).log2();
     }
     -sum / (batch_size as Elem)
 }
@@ -231,18 +236,20 @@ impl SoftmaxWithLoss {
         let layer = SoftmaxWithLoss {
             y: Array::zeros((1, 1)),
             t: Array::zeros((1)),
-            loss: Array::zeros((1, 1)),
+            loss: 0.,
         };
         layer
     }
-    pub fn forward(&mut self, x: &Array2<Elem>, t: &Array1<i32>) -> Array2<Elem> {
+    pub fn forward(&mut self, x: &Array2<Elem>, t: &Array1<usize>) -> Elem {
         debug_assert_eq!(x.shape()[0], t.shape()[0]);
+        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L215
 
         // What's softmax for 2 dimensional array?
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L31
         self.t = t.to_owned();
         self.y = softmax_array2(x);
-        Array::zeros(x.dim())
+        self.loss = cross_entropy_error(&self.y, t);
+        self.loss
     }
     pub fn backward(&mut self, dout: &Array2<Elem>) -> Array2<Elem> {
         Array::zeros((1, 1))
@@ -475,7 +482,7 @@ fn col2im(
 }
 
 #[derive(Debug)]
-pub struct Convolution<'a> {
+pub struct Convolution {
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py
     // The following indicates that weights are also 4-dimensional array
     //   self.dW = self.dW.transpose(1, 0).reshape(FN, C, FH, FW)
@@ -483,7 +490,7 @@ pub struct Convolution<'a> {
     filter_width: usize,
     stride: usize,
     pad: usize,
-    last_input: &'a Matrix, // x in the book. Owned?
+    last_input: Matrix, // x in the book. Owned? Yes.
     col: Array2<Elem>,
     col_weight: Array2<Elem>, // Column representation (im2col) of weights
     weights: Matrix,          // What's the dimension?
@@ -492,7 +499,7 @@ pub struct Convolution<'a> {
     d_bias: Array1<Elem>,
 }
 
-impl<'a> Convolution<'a> {
+impl<'a> Convolution {
     pub fn new(
         n_input: usize,
         filter_num: usize,
@@ -501,7 +508,7 @@ impl<'a> Convolution<'a> {
         filter_width: usize,
         stride: usize,
         pad: usize,
-    ) -> Convolution<'a> {
+    ) -> Convolution {
         // Initializing weights
         //   self.params['W1'] = weight_init_std * \
         //       np.random.randn(filter_num, input_dim[0], filter_size, filter_size)
@@ -511,7 +518,7 @@ impl<'a> Convolution<'a> {
         let conv = Convolution {
             filter_height,
             filter_width,
-            last_input: &INPUT_ARRAY4_ZERO,
+            last_input: Array4::zeros((1, 1, 1, 1)),
             stride,
             pad,
             col: Array2::zeros((1, 1)),
@@ -551,7 +558,7 @@ fn reshape(input: ArrayBase<Elem>, into_shape: &[i32]) {
     input.into_shape(shape)
 }
 */
-impl<'a> Layer<'a> for Convolution<'a> {
+impl<'a> Layer<'a> for Convolution {
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
         //  (something)x(filter_height*filter_width*channel) matrix
         let (n_input, channel_count, input_height, input_width) = x.dim();
@@ -613,7 +620,7 @@ impl<'a> Layer<'a> for Convolution<'a> {
         let out_reshaped_res = out.into_shape((n_input, out_h, out_w, out_reshaped_last_elem));
         let out_reshaped = out_reshaped_res.unwrap();
         let out_transposed = out_reshaped.permuted_axes([0, 3, 1, 2]);
-        self.last_input = x;
+        self.last_input = x.to_owned();
         self.col = col;
         self.col_weight.assign(&col_weight);
         //        self.col_weight = .into_owned();
@@ -899,7 +906,7 @@ fn test_softmax_array2() {
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
     assert_eq!(sum.shape(), &[2]);
-    
+
     // The sum of each row should be 1
     assert_approx_eq!(sum[[0]], 1.);
     // The sum of each row should be 1
@@ -928,7 +935,7 @@ fn test_cross_entropy_error() {
         t[[i, i]] = 1.;
         input[[i, i]] = 1.;
     }
-    
+
     let ret = cross_entropy_error(input, t);
     assert_approx_eq!(ret, 0.);
 }

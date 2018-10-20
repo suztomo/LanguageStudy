@@ -16,7 +16,7 @@ pub const IMG_W_SIZE: usize = 28;
 pub const MNIST_DOT_MAX: f32 = 255.;
 
 pub struct MnistRecord {
-    pub label: i32,
+    pub label: usize,
     pub dots: [Grayscale; IMG_H_SIZE * IMG_W_SIZE],
     pub dots_array: Array2<f32>,
 }
@@ -40,7 +40,7 @@ impl MnistRecord {
                 array[i] = vv;
                 debug_assert!(vv >= 0. && vv <= 1., "MNIST dot must be between 0 - 255");
             }
-            let label: i32 = record[0].parse().unwrap();
+            let label: usize = record[0].parse().unwrap();
             let vv: Vec<f32> = array.to_vec();
             //        let dots_array1: Array1<f32> = Array1::from_vec(vv);
             let dots_array2: Array2<f32> =
