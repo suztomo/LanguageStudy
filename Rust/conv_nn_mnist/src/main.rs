@@ -166,6 +166,13 @@ fn main() {
 
             // Backward?
             println!("Finished epoch {}. softmax_output: {}", i, softmax_output);
+
+
+            let softmax_dx = softmax_layer.backward(softmax_output);
+            let relu2_dx = relu2_layer.backward(&softmax_dx);
+            let affine_dx = affine_layer.backward(&relu2_dx);
+            let relu_dx = relu_layer.backward(&affine_dx);
+            let conv_dx = convolution_layer.backward(&relu_dx);
         }
     }
     println!(

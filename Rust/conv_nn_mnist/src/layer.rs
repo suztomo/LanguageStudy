@@ -174,6 +174,8 @@ impl<'a> Layer<'a> for Pooling<'a> {
         let dout_size: usize = dout.len();
         let dmax = Array2::<Elem>::zeros((dout_size, pool_size));
 
+        // TODO: This is not implemented
+
         // In Numpy:
         //   dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
         //   dmax = dmax.reshape(dout.shape + (pool_size,))
