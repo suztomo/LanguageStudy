@@ -212,13 +212,14 @@ fn cross_entropy_error(y: &Array2<Elem>, answer_labels: &Array1<usize>) -> Elem 
     // The first dimension is for mini-batch
     let batch_size = y.shape()[0];
 
+    // In ths project, answer_labels hold the answer, not one-hot-vector.
+    // y is one-hot-vector.
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L46
-    // If answer is given one-hot vector, convert one-hot vector to teacher labelling
-    // let answer_labels = argmax(&t, Axis(1));
+    //   If answer is given one-hot vector, convert one-hot vector to teacher labelling
+    //   let answer_labels = argmax(&t, Axis(1));
     debug_assert_eq!(answer_labels.shape(), &[batch_size]);
 
     // For each batch, get each value of y
-
     // -np.sum(np.log(y[np.arange(batch_size), t] + 1e-7)) / batch_size
     // It seems this calculates values of errors across batches
     // The first time to mix data across batches
@@ -242,7 +243,7 @@ impl SoftmaxWithLoss {
     }
     pub fn forward(&mut self, x: &Array2<Elem>, t: &Array1<usize>) -> Elem {
         debug_assert_eq!(x.shape()[0], t.shape()[0]);
-        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L215
+        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L70
 
         // What's softmax for 2 dimensional array?
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L31
@@ -251,8 +252,16 @@ impl SoftmaxWithLoss {
         self.loss = cross_entropy_error(&self.y, t);
         self.loss
     }
-    pub fn backward(&mut self, dout: &Array2<Elem>) -> Array2<Elem> {
-        Array::zeros((1, 1))
+
+    pub fn backward(&mut self, _dout: Elem) -> Array2<Elem> {
+        let batch_size = self.t.shape()[0];
+        let mut dx = self.y.to_owned();
+
+        // dx[np.arange(batch_size), self.t] -= 1
+        for i in 0..batch_size {
+            dx[[i, self.t[i]]] -= 1.;
+        }
+        dx / (batch_size as f32)
     }
 }
 
@@ -894,9 +903,11 @@ fn test_affine() {
 fn test_softmax_with_loss() {
     let input = Array::random((10, 3), F32(Normal::new(0., 1.)));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
-    let answer_array1 = Array1::from_vec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 0]);
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
     let output = softmax_with_loss_layer.forward(&input, &answer_array1);
-    assert_eq!(output.shape(), &[10, 3]);
+
+    let dx = softmax_with_loss_layer.backward(output);
+    assert_eq!(dx.shape(), input.shape());
 }
 
 #[test]
@@ -929,13 +940,13 @@ fn test_argmax_array2() {
 #[test]
 fn test_cross_entropy_error() {
     let mut input = Array::random((5, 10), F32(Normal::new(0., 1.)));
-    let mut t = Array2::zeros((5, 10));
+    let mut t = Array1::<usize>::zeros((5));
     for i in 0..5 {
         // For i-th batch, the answer is i
-        t[[i, i]] = 1.;
+        t[[i]] = i;
         input[[i, i]] = 1.;
     }
 
-    let ret = cross_entropy_error(input, t);
+    let ret = cross_entropy_error(&input, &t);
     assert_approx_eq!(ret, 0.);
 }

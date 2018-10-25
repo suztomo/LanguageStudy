@@ -71,12 +71,12 @@ impl LabelTable {
         ];
         LabelTable { label_arrays }
     }
-    pub fn label_to_array<'a>(&'a self, num: i32) -> &'a Array2<f32> {
-        &self.label_arrays[num as usize]
+    pub fn label_to_array<'a>(&'a self, num: usize) -> &'a Array2<f32> {
+        &self.label_arrays[num]
     }
 
     // array is 1x10 matrix
-    pub fn array_to_label(array: ArrayView2<f32>) -> i32 {
+    pub fn array_to_label(array: ArrayView2<f32>) -> usize {
         let mut max_value: f32 = 0.;
         let mut max_index: usize = 0;
         for i in 0..10 {
@@ -85,7 +85,7 @@ impl LabelTable {
                 max_index = i
             }
         }
-        max_index as i32
+        max_index as usize
     }
 }
 
@@ -195,7 +195,7 @@ fn array_label_test() {
         let array = lt.label_to_array(i);
         let actual_label = LabelTable::array_to_label(array.view());
         assert_eq!(
-            actual_label, i,
+            actual_label, i as usize,
             "The array to label conversion should work for i"
         )
     }
@@ -218,7 +218,7 @@ fn backprop_test() {
             let v: f32 = record[i + 1].parse().unwrap();
             array[i] = v / 255.;
         }
-        let label: i32 = record[0].parse().unwrap();
+        let label: usize = record[0].parse().unwrap();
         let vv: Vec<f32> = array.to_vec();
         //        let dots_array1: Array1<f32> = Array1::from_vec(vv);
         let dots_array2: Array2<f32> = Array2::from_shape_vec((1, 784), vv).unwrap();
