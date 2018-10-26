@@ -132,9 +132,6 @@ fn main() {
     let before_training = Instant::now();
     let epoch = 30;
     for i in 0..epoch {
-        let mut total_count = 0;
-        let mut correct_prediction = 0;
-
         // 4-dimensional data of (N-data, Channel, Height, Width)
         {
             // Forward
@@ -167,7 +164,7 @@ fn main() {
             // Backward?
             println!("Finished epoch {}. softmax_output: {}", i, softmax_output);
 
-
+            // Type check passes but the calculation doesn't look right. What's next?
             let softmax_dx = softmax_layer.backward(softmax_output);
             let relu2_dx = relu2_layer.backward(&softmax_dx);
             let affine_dx = affine_layer.backward(&relu2_dx);

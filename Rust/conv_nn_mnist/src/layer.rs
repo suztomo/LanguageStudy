@@ -72,10 +72,10 @@ impl<'a> Affine {
         layer
     }
     /* Can Affine implement Layer so that the layer has consistency in input
-  and output shape? Problem is that Affine in the example code forwards
-  Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
-} 
-impl<'a> Layer<'a> for Affine {*/
+      and output shape? Problem is that Affine in the example code forwards
+      Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
+    } 
+    impl<'a> Layer<'a> for Affine {*/
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
         let (n_input, channel_size, input_height, input_width) = x.dim();
@@ -951,4 +951,95 @@ fn test_cross_entropy_error() {
 
     let ret = cross_entropy_error(&input, &t);
     assert_approx_eq!(ret, 0.);
+}
+
+#[test]
+fn test_differentiation_softmax_with_loss() {
+    let mut input = Array::random((10, 3), F32(Normal::new(0., 1.)));
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
+
+    for i in 0..1000 {
+        let output = softmax_with_loss_layer.forward(&input, &answer_array1);
+        println!("output: {:?}", output);
+        let dx = softmax_with_loss_layer.backward(output);
+        assert_eq!(dx.shape(), input.shape());
+        input -= &dx;
+    }
+    println!("input: {:?}", input);
+}
+#[test]
+fn test_differentiation_relu2() {
+    let mut relu2_layer = Relu::<Ix2>::new();
+    // mean 1. so that many of the data are positive
+    let mut input = Array::random((10, 3), F32(Normal::new(1., 1.)));
+    let input_copy = input.to_owned();
+    let mut answer = Array2::<Elem>::zeros((10, 3));
+    answer[[0, 0]] = 1.;
+    answer[[1, 1]] = 1.;
+    answer[[2, 2]] = 1.;
+    answer[[3, 0]] = 1.;
+    answer[[4, 1]] = 1.;
+    answer[[5, 2]] = 1.;
+    answer[[6, 0]] = 1.;
+    answer[[7, 1]] = 1.;
+    answer[[8, 2]] = 1.;
+    answer[[8, 0]] = 1.;
+
+    for i in 0..1000 {
+        let mut output = relu2_layer.forward(&input);
+        let dy = &answer - &output;
+        let mut dx = relu2_layer.backward(&dy);
+        dx *= 0.1;
+        input += &dx;
+    }
+    for i in 0..10 {
+        for j in 0..3 {
+            // If the input is positive, then it should gradually reach 1.
+            if input[[i, j]] > 0.00001 {
+                assert_approx_eq!(input[[i, j]], 1.);
+            } else if input[[i, j]] < 0. {
+                assert_eq!(
+                    input_copy[[i, j]],
+                    input[[i, j]],
+                    "Relu should not touch the negative input values."
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_differentiation_relu4() {
+    let mut relu_layer = Relu::<Ix4>::new();
+    // mean 1. so that many of the data are positive
+    let mut input = Array::random((1, 1, 5, 5), F32(Normal::new(1., 1.)));
+    let input_copy = input.to_owned();
+    let mut answer = Array4::<Elem>::zeros((1, 1, 5, 5));
+    for i in 0..5 {
+        answer[[0, 0, i, i]] = 1.;
+    }
+    for i in 0..1 {
+        let mut output = relu_layer.forward(&input);
+        let dy = &answer - &output;
+        let mut dx = relu_layer.backward(&dy);
+        input += &dx;
+    }
+    for i in 0..5 {
+        for j in 0..5 {
+            let v = input[[0, 0, i, j]];
+            // If the input is positive, then it should gradually reach 1.
+            if v > 0.00001 {
+                assert_approx_eq!(v, 1.);
+            } else if v < 0. {
+                assert_eq!(
+                    v,
+                    input_copy[[0, 0, i, j]],
+                    "Relu should not touch the negative input values."
+                );
+            } else {
+                assert!(v < 0.00001);
+            }
+        }
+    }
 }
