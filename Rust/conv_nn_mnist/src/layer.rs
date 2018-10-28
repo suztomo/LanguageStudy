@@ -62,6 +62,8 @@ impl<'a> Affine {
             //         self.params['W2'] = weight_init_std * \
             //                 np.random.randn(pool_output_size, hidden_size)
             //         self.params['b2'] = np.zeros(hidden_size)
+
+            // input_size for Affine is channel_size*input_height*input_width
             weights: Array::random((input_size, hidden_size), F32(Normal::new(0., 1.))),
             d_weights: Array2::zeros((1, 1)),
             last_input_matrix: Array2::zeros((1, 1)),
@@ -85,20 +87,21 @@ impl<'a> Affine {
         // The below raised 'ShapeError/IncompatibleLayout: incompatible memory layout' at unwrap
         // let x_copy = x.to_owned();
         let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
+        // (N, channel_size*height*width)
         self.last_input_matrix = reshaped_x_res.unwrap();
         debug_assert_eq!(
             self.last_input_matrix.shape()[1],
             self.weights.shape()[0],
             "The shape should match for matrix multiplication"
         );
-        // Problem at October 20th
-        //   left: `17280`,    <- Where is it coming from. It's not multiply of 28*28
-        //   right: `100`: The shape should match for matrix multiplication', src/layer.rs:89:9
-
-        // inputs 10 × 147 and 5 × 3 are not compatible for matrix multiplication
+        // (N, channel_size*height*width) * (channel_size*height*width, hidden_size)
+        //   => input_by_weights: (N, hidden_size)
         let input_by_weights = self.last_input_matrix.dot(&self.weights);
+        // self.bias: (hidden_size)
+        // output: (N, hidden_size)
         let output = input_by_weights + &self.bias;
-        // Isn't output a matrix? It should output as (N, C, H, W).
+        // Isn't output a matrix? It should output as (N, C, H, W) in order to feed the output
+        // back to Convolution etc.
         // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
         // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
         output
@@ -1042,4 +1045,35 @@ fn test_differentiation_relu4() {
             }
         }
     }
+}
+
+#[test]
+
+fn test_differentiation_affine() {
+    let n_input = 1;
+    let mut input = Array::random((n_input, 3, 7, 7), F32(Normal::new(0., 1.)));
+    let affine_input_size = 3 * 7 * 7;
+    let mut layer = Affine::new(affine_input_size, 20);
+
+    let answer = Array::random((n_input, 20), F32(Normal::new(0., 1.)));
+
+    for i in 0..5 {
+        let output = layer.forward(&input);
+        assert_eq!(output.shape(), [n_input, 20]);
+
+        let dy = &answer - &output;
+        let dx = layer.backward(&dy);
+        println!("dx: {:?}", dx);
+
+        // Adjust weights
+        layer.weights += &layer.d_weights;
+        layer.bias += &layer.d_bias;
+        input += &dx;
+    }
+    /*
+    assert_eq!(
+        layer.forward(&input),
+        answer,
+        "With differentiation, the input should get close to the answer."
+    ); */
 }
