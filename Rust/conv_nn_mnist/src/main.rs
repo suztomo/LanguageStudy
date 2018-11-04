@@ -131,14 +131,19 @@ fn main() {
     let label_table = LabelTable::new();
     let before_training = Instant::now();
     let epoch = 30;
+    let learning_rate = 0.05;
+
+    // This needs to be in the for-loop. However, even when this is outside the loop,
+    // the learning rate (softmax_output) does not improve over iteration. Why?
+    // This 10 must match the first argument for Convolution::new.
+    let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, 10);
+    let answer_array1 = Array1::from_vec(answers);
+
     for i in 0..epoch {
         // 4-dimensional data of (N-data, Channel, Height, Width)
         {
             // Forward
 
-            // This 10 must match the first argument for Convolution::new.
-            let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, 10);
-            let answer_array1 = Array1::from_vec(answers);
 
             // nchw: borrowed value does not live long enough
             // hchw is used only to train the internal values of the layer
@@ -162,14 +167,20 @@ fn main() {
             let softmax_output = softmax_layer.forward(&relu2_output, &answer_array1);
 
             // Backward?
+            // It always stick to 20.928146. Why? Shouldn't it at least move a little bit
+            // for the value for the mis-labeled field?
             println!("Finished epoch {}. softmax_output: {}", i, softmax_output);
 
             // Type check passes but the calculation doesn't look right. What's next?
             let softmax_dx = softmax_layer.backward(softmax_output);
             let relu2_dx = relu2_layer.backward(&softmax_dx);
             let affine_dx = affine_layer.backward(&relu2_dx);
+            affine_layer.weights += &(&affine_layer.d_weights * learning_rate);
+            affine_layer.bias += &(&affine_layer.d_bias * learning_rate);
             let relu_dx = relu_layer.backward(&affine_dx);
-            let conv_dx = convolution_layer.backward(&relu_dx);
+            let _conv_dx = convolution_layer.backward(&relu_dx);
+            convolution_layer.weights += &(&convolution_layer.d_weights * learning_rate);
+            convolution_layer.bias += &(&convolution_layer.d_bias * learning_rate);
         }
     }
     println!(

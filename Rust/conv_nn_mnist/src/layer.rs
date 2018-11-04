@@ -3,6 +3,7 @@ use rand::distributions::Normal;
 // use rand::Rng;
 use ndarray::prelude::*;
 use ndarray::Ix;
+use ndarray::Zip;
 use utils::math::sigmoid;
 
 lazy_static! {
@@ -46,15 +47,32 @@ pub trait Layer<'a> {
 #[derive(Debug)]
 pub struct Affine {
     original_shape: [usize; 4],
-    weights: Array2<Elem>, // What's the dimension?
-    d_weights: Array2<Elem>,
+    pub weights: Array2<Elem>, // What's the dimension?
+    pub d_weights: Array2<Elem>,
     last_input_matrix: Array2<Elem>, // x in the book. Owned
-    bias: Array1<Elem>,
-    d_bias: Array1<Elem>,
+    pub bias: Array1<Elem>,
+    pub d_bias: Array1<Elem>,
+}
+
+fn conv4d_to_2d(x: &Matrix) -> Array2<Elem> {
+    let (n_input, channel_size, input_height, input_width) = x.dim();
+    let input_reshape_col_count = channel_size * input_height * input_width;
+    let mut x_copy = Array::zeros(x.raw_dim());
+    x_copy.assign(x);
+    // The below raised 'ShapeError/IncompatibleLayout: incompatible memory layout' at unwrap
+    // let x_copy = x.to_owned();
+    let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
+    // (N, channel_size*height*width)
+    reshaped_x_res.unwrap()
 }
 
 impl<'a> Affine {
     pub fn new(input_size: usize, hidden_size: usize) -> Affine {
+        let initial_weights = Array::random((input_size, hidden_size), F32(Normal::new(0., 1.)));
+        // Initial weights for debugging was arr2(&[[0.8520029, -1.1546916, 0.5509542],
+        // [-0.74658644, 0.8143777, 0.7891202],
+        // [1.1643051, -0.7081804, 0.4132015],
+        // [-1.7494456, 0.9154338, -1.5571696]]);
         let layer = Affine {
             original_shape: [0, 0, 0, 0],
             // In Numpy, the weights shape is (pool_output_size, pool_output_size) and
@@ -64,7 +82,7 @@ impl<'a> Affine {
             //         self.params['b2'] = np.zeros(hidden_size)
 
             // input_size for Affine is channel_size*input_height*input_width
-            weights: Array::random((input_size, hidden_size), F32(Normal::new(0., 1.))),
+            weights: initial_weights,
             d_weights: Array2::zeros((1, 1)),
             last_input_matrix: Array2::zeros((1, 1)),
             // The filter_num matches the number of channels in output feature map
@@ -80,15 +98,8 @@ impl<'a> Affine {
     impl<'a> Layer<'a> for Affine {*/
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
-        let (n_input, channel_size, input_height, input_width) = x.dim();
-        let input_reshape_col_count = channel_size * input_height * input_width;
-        let mut x_copy = Array::zeros(x.raw_dim());
-        x_copy.assign(x);
-        // The below raised 'ShapeError/IncompatibleLayout: incompatible memory layout' at unwrap
-        // let x_copy = x.to_owned();
-        let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
         // (N, channel_size*height*width)
-        self.last_input_matrix = reshaped_x_res.unwrap();
+        self.last_input_matrix = conv4d_to_2d(&x);
         debug_assert_eq!(
             self.last_input_matrix.shape()[1],
             self.weights.shape()[0],
@@ -108,7 +119,17 @@ impl<'a> Affine {
     }
     pub fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
         // dot is only available via Array2 (Matrix)..
+
+        // self.weights: (channel_size*height*width, hidden_size)
+        // self.weights.t: (hidden_size, channel_size*height*width)
+        // dout: (N, hidden_size)
+        // dx_matrix: (N, channel_size*height*width)
         let dx_matrix = dout.dot(&self.weights.t());
+
+        // self.last_input_matrix: (N, channel_size*height*width)
+        // self.last_input_matrix.t: (channel_size*height*width, N)
+        // dout:(N, hidden_size)
+        // d_weights: (channel_size*height*width, hidden_size)
         self.d_weights = self.last_input_matrix.t().dot(dout);
         self.d_bias = dout.sum_axis(Axis(0));
         let dx_reshaped_res = dx_matrix.into_shape((
@@ -507,10 +528,10 @@ pub struct Convolution {
     last_input: Matrix, // x in the book. Owned? Yes.
     col: Array2<Elem>,
     col_weight: Array2<Elem>, // Column representation (im2col) of weights
-    weights: Matrix,          // What's the dimension?
-    d_weights: Matrix,
-    bias: Array1<Elem>,
-    d_bias: Array1<Elem>,
+    pub weights: Matrix,      // What's the dimension?
+    pub d_weights: Matrix,
+    pub bias: Array1<Elem>,
+    pub d_bias: Array1<Elem>,
 }
 
 impl<'a> Convolution {
@@ -1048,27 +1069,30 @@ fn test_differentiation_relu4() {
 }
 
 #[test]
-
 fn test_differentiation_affine() {
     let n_input = 1;
-    let mut input = Array::random((n_input, 3, 7, 7), F32(Normal::new(0., 1.)));
-    let affine_input_size = 3 * 7 * 7;
-    let mut layer = Affine::new(affine_input_size, 20);
+    let mut input = Array::random((n_input, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let affine_input_size = 1 * 5 * 5;
+    let output_layer_size = 10;
+    let mut layer = Affine::new(affine_input_size, output_layer_size);
 
-    let answer = Array::random((n_input, 20), F32(Normal::new(0., 1.)));
+    let answer = Array::random((n_input, output_layer_size), F32(Normal::new(0., 1.)));
 
-    for i in 0..5 {
+    for i in 0..1 {
         let output = layer.forward(&input);
-        assert_eq!(output.shape(), [n_input, 20]);
-
+        assert_eq!(output.shape(), [n_input, output_layer_size]);
+        println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
         let dy = &answer - &output;
+        println!("dy: {:?}\n", dy);
         let dx = layer.backward(&dy);
         println!("dx: {:?}", dx);
+        println!("d_weights: {:?}", layer.d_weights);
 
         // Adjust weights
-        layer.weights += &layer.d_weights;
-        layer.bias += &layer.d_bias;
-        input += &dx;
+        let learning_rate = 0.1;
+        layer.weights += &(&layer.d_weights * learning_rate);
+        layer.bias += &(&layer.d_bias * learning_rate);
+        input += &(&dx * learning_rate);
     }
     /*
     assert_eq!(
@@ -1076,4 +1100,55 @@ fn test_differentiation_affine() {
         answer,
         "With differentiation, the input should get close to the answer."
     ); */
+}
+
+#[test]
+fn test_differentiation_affine_sample() {
+    let n_input = 1;
+    let mut input = Array4::zeros((n_input, 1, 2, 2));
+    // Fix input randomness along with the initial weights of the network
+    // let mut input = Array::random((n_input, 1, 2, 2), F32(Normal::new(0., 1.)));
+    //[[[[-0.45449638, 0.5611855],
+    //    [0.5321661, 0.22618192]]]]
+    input[[0, 0, 0, 0]] = -0.45449638;
+    input[[0, 0, 0, 1]] = 0.5611855;
+    input[[0, 0, 1, 0]] = 0.5321661;
+    input[[0, 0, 1, 1]] = 0.22618192;
+
+    let affine_input_size = 1 * 2 * 2;
+    let output_layer_size = 3;
+    let mut layer = Affine::new(affine_input_size, output_layer_size);
+
+    println!("Initial weights: {:?}", layer.weights);
+
+    let mut answer = Array::random((n_input, output_layer_size), F32(Normal::new(0., 1.)));
+    answer[[0, 0]] = 0.;
+    answer[[0, 1]] = 0.;
+    answer[[0, 2]] = 1.;
+
+    let learning_rate = 0.01;
+    // What was wrong without learing rate?
+    // It turned out that the feedback for weights was too big in absolute value
+    // to gradually adjust weights
+    for _ in 0..1000 {
+        println!("Input: {:?}", &input);
+        let output = layer.forward(&input);
+        assert_eq!(output.shape(), [n_input, output_layer_size]);
+        println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
+        let dy = &answer - &output;
+        println!("dy: {:?}\n", dy);
+        let dx = layer.backward(&dy);
+        println!("dx: {:?}", dx);
+        println!("d_weights: {:?}", layer.d_weights);
+        println!("d_bias: {:?}", layer.d_bias);
+        // Adjust weights
+        layer.weights += &(&layer.d_weights * learning_rate);
+        layer.bias += &(&layer.d_bias * learning_rate);
+        // input += &(&dx * 0.01);
+    }
+
+    let actual = layer.forward(&input);
+    Zip::from(&actual).and(&answer).apply(|a, b| {
+        assert_approx_eq!(a, b, 0.01);
+    });
 }
