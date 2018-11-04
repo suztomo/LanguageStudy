@@ -938,7 +938,10 @@ fn test_softmax_with_loss() {
 
 #[test]
 fn test_softmax_array2() {
-    let input = Array::random((2, 3), F32(Normal::new(0., 1.)));
+//    let mut input = Array::random((2, 3), F32(Normal::new(0., 0.1)));
+    let input = arr2(&[[0.2, 0.8, 0.1],
+        [-0.5, 0.2, 0.9]]);
+    println!("input: {:?}", input);
     let res = softmax_array2(&input);
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
@@ -948,6 +951,14 @@ fn test_softmax_array2() {
     assert_approx_eq!(sum[[0]], 1.);
     // The sum of each row should be 1
     assert_approx_eq!(sum[[1]], 1.);
+
+    for i in 0..3 {
+        assert!(res[[0, i]] < res[[0, 1]], "The index 1 was max for 1st data. Softmax should keep the maximum");
+        assert!(res[[1, i]] < res[[1, 2]], "The index 2 was max for 2nd data. Softmax should keep the maximum");
+    }
+    println!("res: {:?}", res);
+    assert!(res[[0, 1]] > input[[0, 1]], "For 1st data, Softmax should amplify the difference");
+    assert!(res[[1, 2]] > input[[1, 2]], "For 2nd data, Softmax should amplify the difference");
 }
 
 #[test]
@@ -1151,4 +1162,29 @@ fn test_differentiation_affine_sample() {
     Zip::from(&actual).and(&answer).apply(|a, b| {
         assert_approx_eq!(a, b, 0.01);
     });
+}
+
+
+
+#[test]
+fn test_differentiation_softmax_sample() {
+    let n_input = 3;
+    let mut input = Array2::zeros((n_input, 10));
+    // Fix input randomness along with the initial weights of the network
+    // They're almost zero
+    // let mut input = Array::random((n_input, 10), F32(Normal::new(0., 0.5)));
+    //[[[[-0.45449638, 0.5611855],
+    //    [0.5321661, 0.22618192]]]]
+
+    for i in 0..10 {
+        input[[0, 1]] = 0.9;
+        input[[1, 0]] = 0.91;
+        input[[2, i]] = 0.89;
+
+        // 3 inputs
+        let answer_array1 = arr1(&[1, 0, 8]);
+        let mut softmax_layer = SoftmaxWithLoss::new();
+        let output = softmax_layer.forward(&input, &answer_array1);
+        println!("output for i:{:?}: {:?}", i, output);
+    }
 }
