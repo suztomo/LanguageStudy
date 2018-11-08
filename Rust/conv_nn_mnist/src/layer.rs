@@ -938,10 +938,8 @@ fn test_softmax_with_loss() {
 
 #[test]
 fn test_softmax_array2() {
-//    let mut input = Array::random((2, 3), F32(Normal::new(0., 0.1)));
     let input = arr2(&[[0.2, 0.8, 0.1],
         [-0.5, 0.2, 0.9]]);
-    println!("input: {:?}", input);
     let res = softmax_array2(&input);
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
@@ -953,12 +951,16 @@ fn test_softmax_array2() {
     assert_approx_eq!(sum[[1]], 1.);
 
     for i in 0..3 {
-        assert!(res[[0, i]] < res[[0, 1]], "The index 1 was max for 1st data. Softmax should keep the maximum");
-        assert!(res[[1, i]] < res[[1, 2]], "The index 2 was max for 2nd data. Softmax should keep the maximum");
+        assert!(res[[0, i]] <= res[[0, 1]], "The index 1 was max for 1st data. Softmax should keep the maximum");
+        assert!(res[[1, i]] <= res[[1, 2]], "The index 2 was max for 2nd data. Softmax should keep the maximum");
     }
-    println!("res: {:?}", res);
-    assert!(res[[0, 1]] > input[[0, 1]], "For 1st data, Softmax should amplify the difference");
-    assert!(res[[1, 2]] > input[[1, 2]], "For 2nd data, Softmax should amplify the difference");
+    
+    assert_approx_eq!((0.2 as f32).exp()/((0.2 as f32).exp()+(0.8 as f32).exp()+(0.1 as f32).exp()),
+        res[[0, 0]] as f32);
+    assert_approx_eq!((-0.5 as f32).exp()/((-0.5 as f32).exp()+(0.2 as f32).exp()+(0.9 as f32).exp()),
+        res[[1, 0]] as f32);
+    assert_approx_eq!((0.9 as f32).exp()/((-0.5 as f32).exp()+(0.2 as f32).exp()+(0.9 as f32).exp()),
+        res[[1, 2]] as f32);
 }
 
 #[test]
