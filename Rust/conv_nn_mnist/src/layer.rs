@@ -252,10 +252,11 @@ fn cross_entropy_error(y: &Array2<Elem>, answer_labels: &Array1<usize>) -> Elem 
 
     let mut sum = 0.;
     for i in 0..batch_size {
+        // 0 - 9
         let answer_index = answer_labels[i];
         sum += (y[[i, answer_index]] + 1e-7).log2();
     }
-    -sum / (batch_size as Elem)
+    -sum / (batch_size as f32)
 }
 
 impl SoftmaxWithLoss {
@@ -977,15 +978,46 @@ fn test_argmax_array2() {
 }
 
 #[test]
-fn test_cross_entropy_error() {
+fn test_cross_entropy_error_all_zero() {
+    for i in 1..10 {
+        let mut input = Array2::zeros((i, 10));
+        let mut t = Array1::<usize>::zeros(i);
+        for j in 0..i {
+            // For i-th batch, the answer is i
+            t[[j]] = j;
+        }
+        let ret = cross_entropy_error(&input, &t);
+        // Because cross_entropy_error gives the average across the batches
+        // it gives the same number for 1-size batch to 10-size batch.
+        // 1e-7 is a magic number to avoid infinity
+        assert_approx_eq!(ret, -(1e-7 as f32).log2());
+    }
+}
+
+#[test]
+fn test_cross_entropy_error_random() {
     let mut input = Array::random((5, 10), F32(Normal::new(0., 1.)));
-    let mut t = Array1::<usize>::zeros((5));
+    let mut t = Array1::<usize>::zeros(5);
     for i in 0..5 {
         // For i-th batch, the answer is i
         t[[i]] = i;
         input[[i, i]] = 1.;
     }
 
+    let ret = cross_entropy_error(&input, &t);
+    // Other part than the correct answer does not matter
+    assert_approx_eq!(ret, 0.);
+}
+
+#[test]
+fn test_cross_entropy_error_exact_match() {
+    let mut input = Array2::zeros((5, 10));
+    let mut t = Array1::<usize>::zeros(5);
+    for i in 0..5 {
+        // For i-th batch, the answer is i
+        t[[i]] = i;
+        input[[i, i]] = 1.;
+    }
     let ret = cross_entropy_error(&input, &t);
     assert_approx_eq!(ret, 0.);
 }
@@ -1090,29 +1122,27 @@ fn test_differentiation_affine() {
     let mut layer = Affine::new(affine_input_size, output_layer_size);
 
     let answer = Array::random((n_input, output_layer_size), F32(Normal::new(0., 1.)));
+    let learning_rate = 0.01;
 
-    for i in 0..1 {
+    for _i in 0..1000 {
         let output = layer.forward(&input);
         assert_eq!(output.shape(), [n_input, output_layer_size]);
-        println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
+        //println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
         let dy = &answer - &output;
-        println!("dy: {:?}\n", dy);
+        //println!("dy: {:?}\n", dy);
         let dx = layer.backward(&dy);
-        println!("dx: {:?}", dx);
-        println!("d_weights: {:?}", layer.d_weights);
+        //println!("dx: {:?}", dx);
+        //println!("d_weights: {:?}", layer.d_weights);
 
         // Adjust weights
-        let learning_rate = 0.1;
         layer.weights += &(&layer.d_weights * learning_rate);
         layer.bias += &(&layer.d_bias * learning_rate);
         input += &(&dx * learning_rate);
     }
-    /*
-    assert_eq!(
-        layer.forward(&input),
-        answer,
-        "With differentiation, the input should get close to the answer."
-    ); */
+    let answer_from_layer = layer.forward(&input);
+    Zip::from(&answer_from_layer).and(&answer).apply(|a, b| {
+        assert_approx_eq!(a, b, 0.01);
+    });
 }
 
 #[test]
@@ -1132,8 +1162,6 @@ fn test_differentiation_affine_sample() {
     let output_layer_size = 3;
     let mut layer = Affine::new(affine_input_size, output_layer_size);
 
-    println!("Initial weights: {:?}", layer.weights);
-
     let mut answer = Array::random((n_input, output_layer_size), F32(Normal::new(0., 1.)));
     answer[[0, 0]] = 0.;
     answer[[0, 1]] = 0.;
@@ -1144,16 +1172,10 @@ fn test_differentiation_affine_sample() {
     // It turned out that the feedback for weights was too big in absolute value
     // to gradually adjust weights
     for _ in 0..1000 {
-        println!("Input: {:?}", &input);
         let output = layer.forward(&input);
         assert_eq!(output.shape(), [n_input, output_layer_size]);
-        println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
         let dy = &answer - &output;
-        println!("dy: {:?}\n", dy);
         let dx = layer.backward(&dy);
-        println!("dx: {:?}", dx);
-        println!("d_weights: {:?}", layer.d_weights);
-        println!("d_bias: {:?}", layer.d_bias);
         // Adjust weights
         layer.weights += &(&layer.d_weights * learning_rate);
         layer.bias += &(&layer.d_bias * learning_rate);
