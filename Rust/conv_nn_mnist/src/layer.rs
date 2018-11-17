@@ -867,7 +867,7 @@ fn pooling_forward_test() {
     );
 }
 
-fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
+pub fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
     let find_maxarg = |a: ArrayView1<Elem>| -> usize {
         let mut ret = 0;
         let mut m = a[[ret]];
@@ -953,8 +953,7 @@ fn test_softmax_with_loss() {
 
 #[test]
 fn test_softmax_array2() {
-    let input = arr2(&[[0.2, 0.8, 0.1],
-        [-0.5, 0.2, 0.9]]);
+    let input = arr2(&[[0.2, 0.8, 0.1], [-0.5, 0.2, 0.9]]);
     let res = softmax_array2(&input);
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
@@ -966,23 +965,33 @@ fn test_softmax_array2() {
     assert_approx_eq!(sum[[1]], 1.);
 
     for i in 0..3 {
-        assert!(res[[0, i]] <= res[[0, 1]], "The index 1 was max for 1st data. Softmax should keep the maximum");
-        assert!(res[[1, i]] <= res[[1, 2]], "The index 2 was max for 2nd data. Softmax should keep the maximum");
+        assert!(
+            res[[0, i]] <= res[[0, 1]],
+            "The index 1 was max for 1st data. Softmax should keep the maximum"
+        );
+        assert!(
+            res[[1, i]] <= res[[1, 2]],
+            "The index 2 was max for 2nd data. Softmax should keep the maximum"
+        );
     }
-    
-    assert_approx_eq!((0.2 as f32).exp()/((0.2 as f32).exp()+(0.8 as f32).exp()+(0.1 as f32).exp()),
-        res[[0, 0]] as f32);
-    assert_approx_eq!((-0.5 as f32).exp()/((-0.5 as f32).exp()+(0.2 as f32).exp()+(0.9 as f32).exp()),
-        res[[1, 0]] as f32);
-    assert_approx_eq!((0.9 as f32).exp()/((-0.5 as f32).exp()+(0.2 as f32).exp()+(0.9 as f32).exp()),
-        res[[1, 2]] as f32);
-}
 
+    assert_approx_eq!(
+        (0.2 as f32).exp() / ((0.2 as f32).exp() + (0.8 as f32).exp() + (0.1 as f32).exp()),
+        res[[0, 0]] as f32
+    );
+    assert_approx_eq!(
+        (-0.5 as f32).exp() / ((-0.5 as f32).exp() + (0.2 as f32).exp() + (0.9 as f32).exp()),
+        res[[1, 0]] as f32
+    );
+    assert_approx_eq!(
+        (0.9 as f32).exp() / ((-0.5 as f32).exp() + (0.2 as f32).exp() + (0.9 as f32).exp()),
+        res[[1, 2]] as f32
+    );
+}
 
 #[test]
 fn test_softmax_array2_minus() {
-    let input = arr2(&[[-5., 4., -4.],
-        [-50., -40., 40.]]);
+    let input = arr2(&[[-5., 4., -4.], [-50., -40., 40.]]);
     let res = softmax_array2(&input);
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
@@ -994,8 +1003,14 @@ fn test_softmax_array2_minus() {
     assert_approx_eq!(sum[[1]], 1.);
 
     for i in 0..3 {
-        assert!(res[[0, i]] <= res[[0, 1]], "The index 1 was max for 1st data. Softmax should keep the maximum");
-        assert!(res[[1, i]] <= res[[1, 2]], "The index 2 was max for 2nd data. Softmax should keep the maximum");
+        assert!(
+            res[[0, i]] <= res[[0, 1]],
+            "The index 1 was max for 1st data. Softmax should keep the maximum"
+        );
+        assert!(
+            res[[1, i]] <= res[[1, 2]],
+            "The index 2 was max for 2nd data. Softmax should keep the maximum"
+        );
     }
 }
 
@@ -1010,6 +1025,13 @@ fn test_argmax_array2() {
     input[[1, 3]] = 1.4;
     let output = argmax(&input, Axis(0));
     assert_eq!(output, arr1(&[2, 1, 2, 1]));
+
+    let mut input2 = Array2::zeros((3, 4));
+    input2[[0, 1]] = 1.;
+    input2[[1, 2]] = 1.;
+    input2[[2, 3]] = 1.;
+    let output = argmax(&input2, Axis(1));
+    assert_eq!(output, arr1(&[1, 2, 3]));
 }
 
 #[test]
@@ -1058,6 +1080,16 @@ fn test_cross_entropy_error_exact_match() {
 }
 
 #[test]
+fn test_differentiation_softmax_with_loss_input_all_zero() {
+    let mut input = Array2::zeros((3, 10));
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2]);
+
+    let output = softmax_with_loss_layer.forward(&input, &answer_array1);
+    assert_approx_eq!(output, 3.3219, 0.001);
+}
+
+#[test]
 fn test_differentiation_softmax_with_loss() {
     let mut input = Array::random((10, 3), F32(Normal::new(0., 1.)));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
@@ -1072,6 +1104,7 @@ fn test_differentiation_softmax_with_loss() {
     }
     println!("input: {:?}", input);
 }
+
 #[test]
 fn test_differentiation_relu2() {
     let mut relu2_layer = Relu::<Ix2>::new();
@@ -1223,8 +1256,6 @@ fn test_differentiation_affine_sample() {
     });
 }
 
-
-
 #[test]
 fn test_differentiation_softmax_sample() {
     let n_input = 3;
@@ -1254,5 +1285,8 @@ fn test_differentiation_softmax_sample() {
     println!("input value? : {:?}", &input);
     let final_output = softmax_layer.forward(&input, &answer_array1);
 
-    println!("Input got adjusted? (smaller the better) : {:?}", final_output);
+    println!(
+        "Input got adjusted? (smaller the better) : {:?}",
+        final_output
+    );
 }

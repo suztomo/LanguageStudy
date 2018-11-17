@@ -30,7 +30,7 @@ extern crate utils;
 use utils::math::sigmoid;
 
 mod layer;
-use layer::{Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
+use layer::{argmax, Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
 mod mnist;
 use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 
@@ -95,7 +95,7 @@ impl LabelTable {
  * and the labels of N
  */
 fn generate_conv_input_array4(
-    mnist_record: &Vec<MnistRecord>,
+    mnist_records: &Vec<MnistRecord>,
     n_input: usize,
 ) -> (Matrix, Vec<usize>) {
     let channel_count = 1; // MNIST is grayscale
@@ -104,13 +104,22 @@ fn generate_conv_input_array4(
     let mut ret: Array4<Elem> =
         Array4::<Elem>::zeros((n_input, channel_count, IMG_H_SIZE, IMG_W_SIZE));
     for i in 0..n_input {
-        let t = rng.gen_range(0, mnist_record.len());
+        let t = rng.gen_range(0, mnist_records.len());
         let mut assign_mut = ret.slice_mut(s![i, 0, .., ..]);
-        let record = &mnist_record[t];
+        let record = &mnist_records[t];
         assign_mut.assign(&record.dots_array);
         answer_labels.push(record.label);
     }
     (ret, answer_labels)
+}
+
+fn mnist_to_nchw(mnist_record: &MnistRecord) -> Matrix {
+    let mut ret: Array4<Elem> = Array4::<Elem>::zeros((1, 1, IMG_H_SIZE, IMG_W_SIZE));
+    {
+        let mut assign_mut = ret.slice_mut(s![0, 0, .., ..]);
+        assign_mut.assign(&mnist_record.dots_array);
+    }
+    ret
 }
 
 fn main() {
@@ -121,84 +130,98 @@ fn main() {
 
     // Initialize layers
     let padding = 2; // To make 24x24 to 28x28
-    let mut convolution_layer = Convolution::new(10, 30, 1, 5, 5, 1, padding);
-    let mut affine_layer = Affine::new(30 * 28 * 28, 10);
+    let batch_size = 100;
+    let mut convolution_layer = Convolution::new(batch_size, 30, 1, 5, 5, 1, padding);
+    let affine_output_size = 100;
+    let mut affine_layer = Affine::new(30 * 28 * 28, affine_output_size);
     let mut relu_layer = Relu::<Ix4>::new();
     let mut relu2_layer = Relu::<Ix2>::new();
-    let mut affine2_layer = Affine::new(17280, 10);
+    let mut affine2_layer = Affine::new(affine_output_size, 10);
     let mut softmax_layer = SoftmaxWithLoss::new();
 
     let label_table = LabelTable::new();
     let before_training = Instant::now();
-    let epoch = 1000;
-    let learning_rate = 0.01;
+    let epoch = 10000;
+    let learning_rate = -1.;
 
     // This needs to be in the for-loop. However, even when this is outside the loop,
     // the learning rate (softmax_output) does not improve over iteration. Why?
-    // This 10 must match the first argument for Convolution::new.
-    let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, 10);
-    let answer_array1 = Array1::from_vec(answers);
 
     for i in 0..epoch {
-        // 4-dimensional data of (N-data, Channel, Height, Width)
-        {
-            // Forward
+        // This 10 must match the first argument for Convolution::new.
+        let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, batch_size);
+        //println!("answers: {:?}", answers);
+        let answer_array1 = Array1::from_vec(answers);
 
+        // nchw is 4-dimensional data of (N-data, Channel, Height, Width)
+        // Forward
 
-            // nchw: borrowed value does not live long enough
-            // hchw is used only to train the internal values of the layer
-            let conv_output = convolution_layer.forward(&nchw);
-            if i == 0 {
-                println!("conv_output shape: {:?}", conv_output.shape());
-            }
-            let relu_output = relu_layer.forward(&conv_output);
-            if i == 0 {
-                println!("relu_output shape: {:?}", relu_output.shape());
-            }
-            let affine_output = affine_layer.forward(&relu_output);
-            if i == 0 {
-                println!("affine_output shape: {:?}", affine_output.shape());
-            }
-            let relu2_output = relu2_layer.forward(&affine_output);
-            if i == 0 {
-                println!("relu2_output shape: {:?}", relu2_output.shape());
-            }
-            
-            let affine2_output = affine2_layer.forward_2d(&relu2_output);            
-            if i == 0 {
-                println!("affine2_output shape: {:?}", affine2_output.shape());
-            }
-
-            let softmax_output = softmax_layer.forward(&affine2_output, &answer_array1);
-
-            // Backward?
-            // It always stick to 20.928146. Why? Shouldn't it at least move a little bit
-            // for the value for the mis-labeled field?
-            println!("Finished epoch {}. softmax_output: {}", i, softmax_output);
-
-            // Type check passes but the calculation doesn't look right. What's next?
-            // Somehow backpropagation of softmax always takes 1.0
-            // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
-            let softmax_dx = softmax_layer.backward(1.);
-            let affine2_dx = affine2_layer.backward_2d(&softmax_dx);
-            let relu2_dx = relu2_layer.backward(&affine2_dx);
-            let affine_dx = affine_layer.backward(&relu2_dx);
-            affine_layer.weights += &(&affine_layer.d_weights * learning_rate);
-            affine_layer.bias += &(&affine_layer.d_bias * learning_rate);
-            let relu_dx = relu_layer.backward(&affine_dx);
-            let _conv_dx = convolution_layer.backward(&relu_dx);
-            convolution_layer.weights += &(&convolution_layer.d_weights * learning_rate);
-            convolution_layer.bias += &(&convolution_layer.d_bias * learning_rate);
+        // nchw: borrowed value does not live long enough
+        // hchw is used only to train the internal values of the layer
+        let conv_output = convolution_layer.forward(&nchw);
+        if i == 0 {
+            println!("conv_output shape: {:?}", conv_output.shape());
         }
+        let relu_output = relu_layer.forward(&conv_output);
+        if i == 0 {
+            println!("relu_output shape: {:?}", relu_output.shape());
+        }
+        let affine_output = affine_layer.forward(&relu_output);
+        if i == 0 {
+            println!("affine_output shape: {:?}", affine_output.shape());
+        }
+        let relu2_output = relu2_layer.forward(&affine_output);
+        if i == 0 {
+            println!("relu2_output shape: {:?}", relu2_output.shape());
+        }
+
+        let affine2_output = affine2_layer.forward_2d(&relu2_output);
+        if i == 0 {
+            println!("affine2_output shape: {:?}", affine2_output.shape());
+        }
+        //        println!("affine2_output: {:?}", affine2_output);
+
+        let softmax_output = softmax_layer.forward(&affine2_output, &answer_array1);
+
+        // It always stick to 3.3219. Why? It looks like the all elements of affine2_output
+        // are close to zero. The feedback is not working as expected.
+        println!(
+            "Finished epoch {}. softmax_output (smaller, the better): {}",
+            i, softmax_output
+        );
+
+        // Backward
+        // Somehow backpropagation of softmax always takes 1.0
+        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
+        let softmax_dx = softmax_layer.backward(1.);
+        let affine2_dx = affine2_layer.backward_2d(&softmax_dx);
+        affine2_layer.weights += &(&affine2_layer.d_weights * learning_rate);
+        affine2_layer.bias += &(&affine2_layer.d_bias * learning_rate);
+
+        let relu2_dx = relu2_layer.backward(&affine2_dx);
+        let affine_dx = affine_layer.backward(&relu2_dx);
+        affine_layer.weights += &(&affine_layer.d_weights * learning_rate);
+        affine_layer.bias += &(&affine_layer.d_bias * learning_rate);
+        let relu_dx = relu_layer.backward(&affine_dx);
+        let _conv_dx = convolution_layer.backward(&relu_dx);
+        convolution_layer.weights += &(&convolution_layer.d_weights * learning_rate);
+        convolution_layer.bias += &(&convolution_layer.d_bias * learning_rate);
     }
     println!(
-        "Finished training in {} secs",
+        "Finished training set in {} secs. Running in test set.",
         before_training.elapsed().as_secs()
     );
     let mut test_count = 0;
     let mut test_correct_prediction = 0;
     for mnist in mnist_records_test.iter() {
-        let predicted_label = 1; // nn.feed_forward(&mnist.dots_array);
+        let nchw = mnist_to_nchw(&mnist);
+        let conv_output = convolution_layer.forward(&nchw);
+        let relu_output = relu_layer.forward(&conv_output);
+        let affine_output = affine_layer.forward(&relu_output);
+        let relu2_output = relu2_layer.forward(&affine_output);
+        let affine2_output = affine2_layer.forward_2d(&relu2_output);
+        let affine2_output_argmax = argmax(&affine2_output, Axis(1));
+        let predicted_label = affine2_output_argmax[[0]];
         if predicted_label == mnist.label {
             test_correct_prediction += 1;
         }
