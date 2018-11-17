@@ -96,18 +96,18 @@ impl<'a> Affine {
       Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
     } 
     impl<'a> Layer<'a> for Affine {*/
-    pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
-        self.original_shape.clone_from_slice(x.shape());
-        // (N, channel_size*height*width)
-        self.last_input_matrix = conv4d_to_2d(&x);
+
+    pub fn forward_2d(&mut self, x: &'a Array2<Elem>) -> Array2<Elem> {
         debug_assert_eq!(
-            self.last_input_matrix.shape()[1],
+            x.shape()[1],
             self.weights.shape()[0],
             "The shape should match for matrix multiplication"
         );
+        // (N, channel_size*height*width)
+        self.last_input_matrix = x.to_owned();
         // (N, channel_size*height*width) * (channel_size*height*width, hidden_size)
         //   => input_by_weights: (N, hidden_size)
-        let input_by_weights = self.last_input_matrix.dot(&self.weights);
+        let input_by_weights = x.dot(&self.weights);
         // self.bias: (hidden_size)
         // output: (N, hidden_size)
         let output = input_by_weights + &self.bias;
@@ -117,7 +117,13 @@ impl<'a> Affine {
         // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
         output
     }
-    pub fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
+
+    pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
+        self.original_shape.clone_from_slice(x.shape());
+        self.forward_2d(&conv4d_to_2d(&x))
+    }
+
+    pub fn backward_2d(&mut self, dout: &'a Array2<Elem>) -> Array2<Elem> {
         // dot is only available via Array2 (Matrix)..
 
         // self.weights: (channel_size*height*width, hidden_size)
@@ -132,6 +138,11 @@ impl<'a> Affine {
         // d_weights: (channel_size*height*width, hidden_size)
         self.d_weights = self.last_input_matrix.t().dot(dout);
         self.d_bias = dout.sum_axis(Axis(0));
+        dx_matrix
+    }
+
+    pub fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
+        let dx_matrix = self.backward_2d(dout);
         let dx_reshaped_res = dx_matrix.into_shape((
             self.original_shape[0],
             self.original_shape[1],
@@ -283,6 +294,9 @@ impl SoftmaxWithLoss {
     pub fn backward(&mut self, _dout: Elem) -> Array2<Elem> {
         let batch_size = self.t.shape()[0];
         let mut dx = self.y.to_owned();
+
+        // When t is one-hot vector,
+        // dx = (self.y - self.t) / batch_size
 
         // dx[np.arange(batch_size), self.t] -= 1
         for i in 0..batch_size {
@@ -964,6 +978,27 @@ fn test_softmax_array2() {
         res[[1, 2]] as f32);
 }
 
+
+#[test]
+fn test_softmax_array2_minus() {
+    let input = arr2(&[[-5., 4., -4.],
+        [-50., -40., 40.]]);
+    let res = softmax_array2(&input);
+    assert_eq!(res.shape(), &[2, 3]);
+    let sum = res.sum_axis(Axis(1));
+    assert_eq!(sum.shape(), &[2]);
+
+    // The sum of each row should be 1
+    assert_approx_eq!(sum[[0]], 1.);
+    // The sum of each row should be 1
+    assert_approx_eq!(sum[[1]], 1.);
+
+    for i in 0..3 {
+        assert!(res[[0, i]] <= res[[0, 1]], "The index 1 was max for 1st data. Softmax should keep the maximum");
+        assert!(res[[1, i]] <= res[[1, 2]], "The index 2 was max for 2nd data. Softmax should keep the maximum");
+    }
+}
+
 #[test]
 fn test_argmax_array2() {
     // fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
@@ -1137,7 +1172,7 @@ fn test_differentiation_affine() {
         // Adjust weights
         layer.weights += &(&layer.d_weights * learning_rate);
         layer.bias += &(&layer.d_bias * learning_rate);
-        input += &(&dx * learning_rate);
+        //input -= &(&dx * learning_rate);
     }
     let answer_from_layer = layer.forward(&input);
     Zip::from(&answer_from_layer).and(&answer).apply(|a, b| {
@@ -1193,22 +1228,31 @@ fn test_differentiation_affine_sample() {
 #[test]
 fn test_differentiation_softmax_sample() {
     let n_input = 3;
+    let mut softmax_layer = SoftmaxWithLoss::new();
+
+    // one-hot vector: the value for the index of correct answer is high
     let mut input = Array2::zeros((n_input, 10));
     // Fix input randomness along with the initial weights of the network
     // They're almost zero
     // let mut input = Array::random((n_input, 10), F32(Normal::new(0., 0.5)));
     //[[[[-0.45449638, 0.5611855],
     //    [0.5321661, 0.22618192]]]]
+    // 3 inputs
+    let answer_array1 = arr1(&[3, 0, 8]);
 
-    for i in 0..10 {
-        input[[0, 1]] = 0.9;
-        input[[1, 0]] = 0.91;
-        input[[2, i]] = 0.89;
-
-        // 3 inputs
-        let answer_array1 = arr1(&[1, 0, 8]);
-        let mut softmax_layer = SoftmaxWithLoss::new();
+    let learning_rate = 1.;
+    for i in 0..1 {
         let output = softmax_layer.forward(&input, &answer_array1);
-        println!("output for i:{:?}: {:?}", i, output);
+
+        // Somehow, the dout for the last layer is always 1.
+        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
+        let dx = softmax_layer.backward(1.);
+
+        // Is this appropriate to subtract dx from input?
+        input -= &(dx * learning_rate);
     }
+    println!("input value? : {:?}", &input);
+    let final_output = softmax_layer.forward(&input, &answer_array1);
+
+    println!("Input got adjusted? (smaller the better) : {:?}", final_output);
 }

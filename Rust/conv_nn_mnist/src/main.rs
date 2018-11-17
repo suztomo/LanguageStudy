@@ -130,8 +130,8 @@ fn main() {
 
     let label_table = LabelTable::new();
     let before_training = Instant::now();
-    let epoch = 30;
-    let learning_rate = 0.05;
+    let epoch = 1000;
+    let learning_rate = 0.01;
 
     // This needs to be in the for-loop. However, even when this is outside the loop,
     // the learning rate (softmax_output) does not improve over iteration. Why?
@@ -160,11 +160,16 @@ fn main() {
                 println!("affine_output shape: {:?}", affine_output.shape());
             }
             let relu2_output = relu2_layer.forward(&affine_output);
-            //let affine2_output = affine2_layer.forward(&relu2_output);
             if i == 0 {
                 println!("relu2_output shape: {:?}", relu2_output.shape());
             }
-            let softmax_output = softmax_layer.forward(&relu2_output, &answer_array1);
+            
+            let affine2_output = affine2_layer.forward_2d(&relu2_output);            
+            if i == 0 {
+                println!("affine2_output shape: {:?}", affine2_output.shape());
+            }
+
+            let softmax_output = softmax_layer.forward(&affine2_output, &answer_array1);
 
             // Backward?
             // It always stick to 20.928146. Why? Shouldn't it at least move a little bit
@@ -172,8 +177,11 @@ fn main() {
             println!("Finished epoch {}. softmax_output: {}", i, softmax_output);
 
             // Type check passes but the calculation doesn't look right. What's next?
-            let softmax_dx = softmax_layer.backward(softmax_output);
-            let relu2_dx = relu2_layer.backward(&softmax_dx);
+            // Somehow backpropagation of softmax always takes 1.0
+            // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
+            let softmax_dx = softmax_layer.backward(1.);
+            let affine2_dx = affine2_layer.backward_2d(&softmax_dx);
+            let relu2_dx = relu2_layer.backward(&affine2_dx);
             let affine_dx = affine_layer.backward(&relu2_dx);
             affine_layer.weights += &(&affine_layer.d_weights * learning_rate);
             affine_layer.bias += &(&affine_layer.d_bias * learning_rate);
