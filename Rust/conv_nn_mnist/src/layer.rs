@@ -4,10 +4,11 @@ use rand::distributions::Normal;
 use ndarray::prelude::*;
 use ndarray::Data;
 use ndarray::IntoDimension;
-use num_traits::identities::Zero;
 use ndarray::Ix;
 use ndarray::Zip;
+use num_traits::identities::Zero;
 use std::f32;
+use std::fmt::Debug;
 use utils::math::sigmoid;
 
 lazy_static! {
@@ -141,81 +142,95 @@ impl<'a> Affine {
 
     pub fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
         let dx_matrix = self.backward_2d(dout);
-        reshape(dx_matrix.view(), (
-            self.original_shape[0],
-            self.original_shape[1],
-            self.original_shape[2],
-            self.original_shape[3],
-        ))
+        reshape(
+            dx_matrix.view(),
+            (
+                self.original_shape[0],
+                self.original_shape[1],
+                self.original_shape[2],
+                self.original_shape[3],
+            ),
+        )
     }
 }
 
 #[derive(Debug)]
-pub struct Pooling<'a> {
+pub struct Pooling {
     pool_h: usize,
     pool_w: usize,
     stride: usize,
     pad: usize,
-    last_input: &'a Matrix, // x in the book. Owned?
+    last_input: Matrix, // x in the book. Owned?
     argmax: Array1<usize>,
 }
-
 
 fn reshape<E, A, D>(input: ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
 where
     D: Dimension,
-    E: IntoDimension,
+    E: IntoDimension + Debug,
     A: Clone + Zero,
 {
     let mulsum = input.shape().iter().fold(1, |sum, val| sum * val);
-    let mut shape = shape.into_dimension().clone();
+    let shape_str = format!("{:?}", &shape);
+    let mut shape_dimension = shape.into_dimension().clone();
 
     let mut zeroIndex: i32 = -1;
     let mut mulsum_newshape = 1;
-    for (i, v) in shape.slice().iter().enumerate() {
+    for (i, v) in shape_dimension.slice().iter().enumerate() {
         if *v < 1 {
-            debug_assert!(zeroIndex == -1,
-            "Non-positive value can be passed once for the new shape");
+            debug_assert!(
+                zeroIndex == -1,
+                "Non-positive value can be passed once for the new shape"
+            );
             zeroIndex = i as i32;
         } else {
             mulsum_newshape *= *v;
         }
     }
     if zeroIndex >= 0 {
-        shape[zeroIndex as usize] = (mulsum / mulsum_newshape) as usize;
+        shape_dimension[zeroIndex as usize] = (mulsum / mulsum_newshape) as usize;
     }
 
     let mut input_copy = Array::zeros(input.raw_dim());
     input_copy.assign(&input);
-    let reshaped_res = input_copy.into_shape(shape.into_pattern());
-    let reshaped = reshaped_res.unwrap();
-    reshaped
+    let reshaped_res = input_copy.into_shape(shape_dimension.into_pattern());
+    match reshaped_res {
+        Err(e) => {
+            panic!(
+                "Failed to reshape the input (shape: {:?}) into {}. Error: {:?}",
+                input.shape(),
+                shape_str,
+                e
+            );
+        }
+        Ok(reshaped) => reshaped,
+    }
 }
 
-impl<'a> Pooling<'a> {
-    pub fn new(pool_h: usize, pool_w: usize, stride: usize, pad: usize) -> Pooling<'a> {
+impl<'a> Pooling {
+    pub fn new(pool_h: usize, pool_w: usize, stride: usize, pad: usize) -> Pooling {
         let pooling = Pooling {
             pool_h,
             pool_w,
             stride,
             pad,
-            last_input: &INPUT_ARRAY4_ZERO,
+            last_input: Array4::zeros((1, 1, 1, 1)),
             argmax: Array1::zeros(1),
         };
         pooling
     }
 }
 
-impl<'a> Layer<'a> for Pooling<'a> {
+impl<'a> Layer<'a> for Pooling {
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L246
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
-        self.last_input = x;
+        self.last_input = x.to_owned();
         let (n_input, channel_count, input_height, input_width) = x.dim();
         let out_h = 1 + (input_height - self.pool_h) / self.stride;
         let out_w = 1 + (input_width - self.pool_w) / self.stride;
         let input_col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad);
         let reshaped_col = reshape(input_col.view(), (0, self.pool_h * self.pool_w));
-        // arg_max = np.argmax(col, axis=1)
+        // arg_max = np.argmax(col, axis=1). The return value is 1-dimension.
         self.argmax = argmax2d(&reshaped_col, Axis(1));
 
         // out = np.max(col, axis=1)
@@ -230,20 +245,67 @@ impl<'a> Layer<'a> for Pooling<'a> {
     fn backward(&mut self, dout: &'a Matrix) -> Matrix {
         // In Numpy:
         //   dout = dout.transpose(0, 2, 3, 1)
+
+        println!("argmax shape: {:?}", self.argmax.shape());
+        println!("dout shape: {:?}", dout.shape());
         let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
-        let dout_size: usize = dout.len();
-        let dmax = Array2::<Elem>::zeros((dout_size, pool_size));
-
+        let dout_size: usize = dout_transposed.len();
+        let mut dmax = Array2::<Elem>::zeros((dout_size, pool_size));
+        println!("dmax shape: {:?}", dmax.shape());
         // TODO: This is not implemented
 
         // In Numpy:
         //   dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
         //   dmax = dmax.reshape(dout.shape + (pool_size,))
+        // Given dout is 4-dimensional, it's adding 5th dimension?
 
-        let dmax = Array4::zeros(self.last_input.raw_dim());
-        dmax
+        // On Nov. 20th, the assignment above has incompatible left-hand and right-hand
+        // What to do?
+        // The left-hand, with the slice for arg_max, has elements of self.arg_max.size
+        // out of the 2-dimensional array.
+        // The right-hand should have the same number of element when flattened.
+        let dout_flattened = reshape(dout_transposed.view(), 0);
+        /*
+        debug_assert_eq!(dout_flattened.len(),
+        self.argmax.len()
+        ); */
+        for i in 0..self.argmax.len() {
+            dmax[[i, self.argmax[i]]] = dout_flattened[i];
+        }
+        let dout_shape = dout_transposed.shape(); // 4-dimensional
+        let dmax = reshape(
+            dmax.view(),
+            (
+                dout_shape[0],
+                dout_shape[1],
+                dout_shape[2],
+                dout_shape[3],
+                pool_size,
+            ),
+        );
+
+        let dmax_shape = dmax.shape();
+        // dcol = dmax.reshape(dmax.shape[0] * dmax.shape[1] * dmax.shape[2], -1)
+        let dcol = reshape(
+            dmax.view(),
+            (dmax_shape[0] * dmax_shape[1] * dmax_shape[2], 0),
+        );
+
+        // dx = col2im(dcol, self.x.shape, self.pool_h, self.pool_w, self.stride, self.pad)
+        let dmax = Array4::<Elem>::zeros(self.last_input.raw_dim());
+
+        //     let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 0);
+        let dx = col2im(
+            &dcol,
+            self.last_input.shape(),
+            self.pool_h,
+            self.pool_w,
+            self.stride,
+            self.pad,
+        );
+        dx
     }
 }
 
@@ -519,9 +581,10 @@ fn col2im(
     );
     let out_h = (input_height + 2 * pad - filter_height) / stride + 1;
     let out_w = (input_width + 2 * pad - filter_width) / stride + 1;
+    // col = col.reshape(N, out_h, out_w, C, filter_h, filter_w).transpose(0, 3, 4, 5, 1, 2)
+    /*
     let mut col_copy = Array::zeros(col.raw_dim());
     col_copy.assign(col);
-    // col = col.reshape(N, out_h, out_w, C, filter_h, filter_w).transpose(0, 3, 4, 5, 1, 2)
     let reshaped_col = col_copy.into_shape((
         n_input,
         out_h,
@@ -529,8 +592,19 @@ fn col2im(
         channel_count,
         filter_height,
         filter_width,
-    ));
-    let transposed_col = reshaped_col.unwrap().permuted_axes([0, 3, 4, 5, 1, 2]);
+    )); */
+    let reshaped_col = reshape(
+        col.view(),
+        (
+            n_input,
+            out_h,
+            out_w,
+            channel_count,
+            filter_height,
+            filter_width,
+        ),
+    );
+    let transposed_col = reshaped_col.permuted_axes([0, 3, 4, 5, 1, 2]);
     let mut img = Array4::zeros((
         n_input,
         channel_count,
@@ -656,7 +730,7 @@ impl<'a> Layer<'a> for Convolution {
         );
 
         // let reshaping_column_count = filter_channel_count * filter_height * filter_width;
-        let weight_reshaped =reshape(self.weights.view(), (n_filter, 0));
+        let weight_reshaped = reshape(self.weights.view(), (n_filter, 0));
         debug_assert_eq!(
             weight_reshaped.shape()[0],
             self.bias.shape()[0],
@@ -861,7 +935,7 @@ fn convolution_forward_test() {
 }
 
 #[test]
-fn pooling_forward_test() {
+fn pooling_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     let dout = Array::random((10, 30, 3, 3), F32(Normal::new(0., 1.)));
     let mut pooling_layer = Pooling::new(3, 3, 1, 0);
@@ -1336,6 +1410,13 @@ fn test_reshape_4d_2d() {
     let res_4d = reshape(res_2d.view(), (10, 1, 5, 5));
     assert_eq!(res_4d.shape(), [10, 1, 5, 5]);
     assert_eq!(input, res_4d);
+}
+
+#[test]
+fn test_reshape_4d_1d() {
+    let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let res_2d = reshape(input.view(), 0);
+    assert_eq!(res_2d.shape(), [250]);
 }
 
 #[test]
