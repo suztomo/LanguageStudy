@@ -4,6 +4,7 @@ use rand::distributions::Normal;
 use ndarray::prelude::*;
 use ndarray::Data;
 use ndarray::IntoDimension;
+use num_traits::identities::Zero;
 use ndarray::Ix;
 use ndarray::Zip;
 use std::f32;
@@ -58,15 +59,9 @@ pub struct Affine {
 }
 
 fn conv4d_to_2d(x: &Matrix) -> Array2<Elem> {
-    let (n_input, channel_size, input_height, input_width) = x.dim();
-    let input_reshape_col_count = channel_size * input_height * input_width;
-    let mut x_copy = Array::zeros(x.raw_dim());
-    x_copy.assign(x);
-    // The below raised 'ShapeError/IncompatibleLayout: incompatible memory layout' at unwrap
-    // let x_copy = x.to_owned();
-    let reshaped_x_res = x_copy.into_shape((n_input, input_reshape_col_count));
+    let (n_input, _channel_size, _input_height, _input_width) = x.dim();
     // (N, channel_size*height*width)
-    reshaped_x_res.unwrap()
+    reshape(x.view(), (n_input, 0))
 }
 
 impl<'a> Affine {
@@ -146,14 +141,12 @@ impl<'a> Affine {
 
     pub fn backward(&mut self, dout: &'a Array2<Elem>) -> Matrix {
         let dx_matrix = self.backward_2d(dout);
-        let dx_reshaped_res = dx_matrix.into_shape((
+        reshape(dx_matrix.view(), (
             self.original_shape[0],
             self.original_shape[1],
             self.original_shape[2],
             self.original_shape[3],
-        ));
-        let dx_reshaped = dx_reshaped_res.unwrap();
-        dx_reshaped
+        ))
     }
 }
 
@@ -165,6 +158,38 @@ pub struct Pooling<'a> {
     pad: usize,
     last_input: &'a Matrix, // x in the book. Owned?
     argmax: Array1<usize>,
+}
+
+
+fn reshape<E, A, D>(input: ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
+where
+    D: Dimension,
+    E: IntoDimension,
+    A: Clone + Zero,
+{
+    let mulsum = input.shape().iter().fold(1, |sum, val| sum * val);
+    let mut shape = shape.into_dimension().clone();
+
+    let mut zeroIndex: i32 = -1;
+    let mut mulsum_newshape = 1;
+    for (i, v) in shape.slice().iter().enumerate() {
+        if *v < 1 {
+            debug_assert!(zeroIndex == -1,
+            "Non-positive value can be passed once for the new shape");
+            zeroIndex = i as i32;
+        } else {
+            mulsum_newshape *= *v;
+        }
+    }
+    if zeroIndex >= 0 {
+        shape[zeroIndex as usize] = (mulsum / mulsum_newshape) as usize;
+    }
+
+    let mut input_copy = Array::zeros(input.raw_dim());
+    input_copy.assign(&input);
+    let reshaped_res = input_copy.into_shape(shape.into_pattern());
+    let reshaped = reshaped_res.unwrap();
+    reshaped
 }
 
 impl<'a> Pooling<'a> {
@@ -181,36 +206,6 @@ impl<'a> Pooling<'a> {
     }
 }
 
-fn reshape<E, A, D>(input: &ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
-where
-    D: Dimension,
-    E: IntoDimension,
-    A: Clone,
-{
-    let mulsum = input.shape().iter().fold(1, |sum, val| sum * val);
-    let mut shape = shape.into_dimension().clone();
-
-    let mut zeroIndex: i32 = -1;
-    let mut mulsum_newshape = 1;
-    for (i, v) in shape.slice().iter().enumerate() {
-        println!("shape element :{:?}", v);
-        if *v < 1 {
-            debug_assert!(zeroIndex == -1,
-            "Non-positive value can be passed once for the new shape");
-            zeroIndex = i as i32;
-        } else {
-            mulsum_newshape *= *v;
-        }
-    }
-    if zeroIndex >= 0 {
-        shape[zeroIndex as usize] = (mulsum / mulsum_newshape as usize);
-    }
-    let input_owned = input.to_owned();
-    let reshaped_res = input_owned.into_shape(shape.into_pattern());
-    let reshaped = reshaped_res.unwrap();
-    reshaped
-}
-
 impl<'a> Layer<'a> for Pooling<'a> {
     // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L246
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
@@ -219,10 +214,7 @@ impl<'a> Layer<'a> for Pooling<'a> {
         let out_h = 1 + (input_height - self.pool_h) / self.stride;
         let out_w = 1 + (input_width - self.pool_w) / self.stride;
         let input_col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad);
-        let col_rows_count =
-            input_col.shape().iter().fold(1, |sum, val| sum * val) / (self.pool_h * self.pool_w);
-        let reshaped_col_res = input_col.into_shape((col_rows_count, self.pool_h * self.pool_w));
-        let reshaped_col = reshaped_col_res.unwrap();
+        let reshaped_col = reshape(input_col.view(), (0, self.pool_h * self.pool_w));
         // arg_max = np.argmax(col, axis=1)
         self.argmax = argmax2d(&reshaped_col, Axis(1));
 
@@ -230,8 +222,8 @@ impl<'a> Layer<'a> for Pooling<'a> {
         let m = max2d(&reshaped_col.view(), Axis(1));
 
         // out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
-        let reshaped_m_res = m.into_shape((n_input, out_h, out_w, channel_count));
-        let transposed_m = reshaped_m_res.unwrap().permuted_axes([0, 3, 1, 2]);
+        let reshaped_max = reshape(m.view(), (n_input, out_h, out_w, channel_count));
+        let transposed_m = reshaped_max.permuted_axes([0, 3, 1, 2]);
 
         transposed_m
     }
@@ -663,18 +655,8 @@ impl<'a> Layer<'a> for Convolution {
             self.pad,
         );
 
-        let mut weight_copy = Array4::<Elem>::zeros(self.weights.raw_dim());
-        weight_copy.assign(&self.weights);
-        let reshaping_column_count = filter_channel_count * filter_height * filter_width;
-        let weights_mulsum = self.weights.shape().iter().fold(1, |sum, val| sum * val);
-        debug_assert_eq!(
-            weights_mulsum,
-            n_filter * reshaping_column_count,
-            "The total multiplication of shapes should remain same after reshaping"
-        );
-        let weight_reshaped_res = weight_copy.into_shape((n_filter, reshaping_column_count));
-        // Problem of 9/16        ^ cannot move out of borrowed content
-        let weight_reshaped = weight_reshaped_res.unwrap();
+        // let reshaping_column_count = filter_channel_count * filter_height * filter_width;
+        let weight_reshaped =reshape(self.weights.view(), (n_filter, 0));
         debug_assert_eq!(
             weight_reshaped.shape()[0],
             self.bias.shape()[0],
@@ -700,10 +682,7 @@ impl<'a> Layer<'a> for Convolution {
         // In Numpy:
         //   out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
         //        let out_shape = &out.shape();
-        let out_shape_multi_sum = out.shape().iter().fold(1, |sum, val| sum * val);
-        let out_reshaped_last_elem = out_shape_multi_sum / n_input / out_h / out_w;
-        let out_reshaped_res = out.into_shape((n_input, out_h, out_w, out_reshaped_last_elem));
-        let out_reshaped = out_reshaped_res.unwrap();
+        let out_reshaped = reshape(out.view(), (n_input, out_h, out_w, 0));
         let out_transposed = out_reshaped.permuted_axes([0, 3, 1, 2]);
         self.last_input = x.to_owned();
         self.col = col;
@@ -720,14 +699,8 @@ impl<'a> Layer<'a> for Convolution {
         // In Numpy
         //   dout = dout.transpose(0,2,3,1).reshape(-1, FN)
         let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
-        let dout_transposed_dim_mul = dout_transposed.shape().iter().fold(1, |sum, val| sum * val);
-        let reshape_row_count = dout_transposed_dim_mul / n_filter;
-        let mut dout_transposed_copy = Array::zeros(dout_transposed.raw_dim());
-        dout_transposed_copy.assign(&dout_transposed);
-        let dout_reshaped_res = dout_transposed_copy.into_shape((reshape_row_count, n_filter));
 
-        // As of 9/21, "incompatible shapes" error
-        let dout_reshaped = dout_reshaped_res.unwrap();
+        let dout_reshaped = reshape(dout_transposed.view(), (0, n_filter)); // dout_reshaped_res.unwrap();
 
         // self.db = np.sum(dout, axis=0)
         self.d_bias = dout_reshaped.sum_axis(Axis(0));
@@ -1163,12 +1136,10 @@ fn test_differentiation_softmax_with_loss() {
 
     for i in 0..1000 {
         let output = softmax_with_loss_layer.forward(&input, &answer_array1);
-        println!("output: {:?}", output);
         let dx = softmax_with_loss_layer.backward(output);
         assert_eq!(dx.shape(), input.shape());
         input -= &dx;
     }
-    println!("input: {:?}", input);
 }
 
 #[test]
@@ -1360,9 +1331,9 @@ fn test_differentiation_softmax_sample() {
 #[test]
 fn test_reshape_4d_2d() {
     let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
-    let res_2d = reshape(&input.view(), (10, 25));
+    let res_2d = reshape(input.view(), (10, 25));
     assert_eq!(res_2d.shape(), [10, 25]);
-    let res_4d = reshape(&res_2d.view(), (10, 1, 5, 5));
+    let res_4d = reshape(res_2d.view(), (10, 1, 5, 5));
     assert_eq!(res_4d.shape(), [10, 1, 5, 5]);
     assert_eq!(input, res_4d);
 }
@@ -1370,9 +1341,9 @@ fn test_reshape_4d_2d() {
 #[test]
 fn test_reshape_4d_2d_with_minus() {
     let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
-    let res_2d = reshape(&input.view(), (10, 0));
+    let res_2d = reshape(input.view(), (10, 0));
     assert_eq!(res_2d.shape(), [10, 25]);
-    let res_4d = reshape(&res_2d.view(), (0, 1, 5, 5));
+    let res_4d = reshape(res_2d.view(), (0, 1, 5, 5));
     assert_eq!(res_4d.shape(), [10, 1, 5, 5]);
     assert_eq!(input, res_4d);
 }

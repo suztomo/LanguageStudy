@@ -15,6 +15,8 @@ extern crate ansi_term;
 #[macro_use]
 extern crate lazy_static; // 1.0.1;
 
+extern crate num_traits;
+
 #[macro_use]
 extern crate ndarray;
 //extern crate ndarray_linalg;
