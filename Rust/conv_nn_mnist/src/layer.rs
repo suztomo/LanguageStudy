@@ -2,8 +2,11 @@ use ndarray_rand::{RandomExt, F32};
 use rand::distributions::Normal;
 // use rand::Rng;
 use ndarray::prelude::*;
+use ndarray::Data;
+use ndarray::IntoDimension;
 use ndarray::Ix;
 use ndarray::Zip;
+use std::f32;
 use utils::math::sigmoid;
 
 lazy_static! {
@@ -178,7 +181,38 @@ impl<'a> Pooling<'a> {
     }
 }
 
+fn reshape<E, A, D>(input: &ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
+where
+    D: Dimension,
+    E: IntoDimension,
+    A: Clone,
+{
+    let mulsum = input.shape().iter().fold(1, |sum, val| sum * val);
+    let mut shape = shape.into_dimension().clone();
+
+    let mut zeroIndex: i32 = -1;
+    let mut mulsum_newshape = 1;
+    for (i, v) in shape.slice().iter().enumerate() {
+        println!("shape element :{:?}", v);
+        if *v < 1 {
+            debug_assert!(zeroIndex == -1,
+            "Non-positive value can be passed once for the new shape");
+            zeroIndex = i as i32;
+        } else {
+            mulsum_newshape *= *v;
+        }
+    }
+    if zeroIndex >= 0 {
+        shape[zeroIndex as usize] = (mulsum / mulsum_newshape as usize);
+    }
+    let input_owned = input.to_owned();
+    let reshaped_res = input_owned.into_shape(shape.into_pattern());
+    let reshaped = reshaped_res.unwrap();
+    reshaped
+}
+
 impl<'a> Layer<'a> for Pooling<'a> {
+    // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L246
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
         self.last_input = x;
         let (n_input, channel_count, input_height, input_width) = x.dim();
@@ -190,10 +224,11 @@ impl<'a> Layer<'a> for Pooling<'a> {
         let reshaped_col_res = input_col.into_shape((col_rows_count, self.pool_h * self.pool_w));
         let reshaped_col = reshaped_col_res.unwrap();
         // arg_max = np.argmax(col, axis=1)
-        self.argmax = argmax(&reshaped_col, Axis(1));
+        self.argmax = argmax2d(&reshaped_col, Axis(1));
 
         // out = np.max(col, axis=1)
-        let m = reshaped_col.fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
+        let m = max2d(&reshaped_col.view(), Axis(1));
+
         // out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
         let reshaped_m_res = m.into_shape((n_input, out_h, out_w, channel_count));
         let transposed_m = reshaped_m_res.unwrap().permuted_axes([0, 3, 1, 2]);
@@ -237,7 +272,7 @@ fn softmax_array2(x: &Array2<Elem>) -> Array2<Elem> {
     let x_t = x.t();
     //  x = x - np.max(x, axis=0)
     //        let m = reshaped_col.fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
-    let x_max = x_t.fold_axis(Axis(0), -1000000., |m, i| if *i < *m { *m } else { *i });
+    let x_max = max2d(&x_t.view(), Axis(0));
     let x_diff_max = &x_t - &x_max;
     let x_exp = x_diff_max.mapv(|x| x.exp());
     let sum_x_exp = x_exp.sum_axis(Axis(0));
@@ -867,7 +902,7 @@ fn pooling_forward_test() {
     );
 }
 
-pub fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
+pub fn argmax2d(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
     let find_maxarg = |a: ArrayView1<Elem>| -> usize {
         let mut ret = 0;
         let mut m = a[[ret]];
@@ -883,11 +918,15 @@ pub fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
     out
 }
 
+pub fn max2d(input: &ArrayView2<Elem>, axis: Axis) -> Array1<Elem> {
+    return input.fold_axis(axis, f32::MIN, |m, i| (*m).max(*i));
+}
+
 #[test]
 fn test_map_axis() {
     let mut input = arr2(&[[4., 1., 2.], [3., 4., 5.]]);
     // let out = input.map_axis(Axis(0), |a:ArrayView1<Elem>| a[[0]]);
-    let out = argmax(&mut input, Axis(0));
+    let out = argmax2d(&mut input, Axis(0));
     assert_eq!(out, arr1(&[0, 1, 1,]));
 }
 
@@ -1015,6 +1054,33 @@ fn test_softmax_array2_minus() {
 }
 
 #[test]
+fn test_max_array2() {
+    // fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
+    let mut input = Array2::zeros((3, 4));
+    //   0   0   0   0
+    //   0 1.3 1.4 1.4
+    // 1.2   0 1.5   0
+
+    input[[2, 0]] = 1.2;
+    input[[1, 1]] = 1.3;
+    input[[2, 2]] = 1.5;
+    input[[1, 2]] = 1.4;
+    input[[1, 3]] = 1.4;
+    let output = max2d(&input.view(), Axis(0));
+    assert_eq!(output, arr1(&[1.2, 1.3, 1.5, 1.4]));
+
+    let mut input2 = Array2::zeros((3, 4));
+    //  0 1.0    0   0
+    //  0   0  1.2   0
+    //  0   0    0 1.3
+    input2[[0, 1]] = 1.;
+    input2[[1, 2]] = 1.2;
+    input2[[2, 3]] = 1.3;
+    let output = max2d(&input2.view(), Axis(1));
+    assert_eq!(output, arr1(&[1.0, 1.2, 1.3]));
+}
+
+#[test]
 fn test_argmax_array2() {
     // fn argmax(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
     let mut input = Array2::zeros((3, 4));
@@ -1023,14 +1089,14 @@ fn test_argmax_array2() {
     input[[2, 2]] = 1.5;
     input[[1, 2]] = 1.4;
     input[[1, 3]] = 1.4;
-    let output = argmax(&input, Axis(0));
+    let output = argmax2d(&input, Axis(0));
     assert_eq!(output, arr1(&[2, 1, 2, 1]));
 
     let mut input2 = Array2::zeros((3, 4));
     input2[[0, 1]] = 1.;
     input2[[1, 2]] = 1.;
     input2[[2, 3]] = 1.;
-    let output = argmax(&input2, Axis(1));
+    let output = argmax2d(&input2, Axis(1));
     assert_eq!(output, arr1(&[1, 2, 3]));
 }
 
@@ -1289,4 +1355,24 @@ fn test_differentiation_softmax_sample() {
         "Input got adjusted? (smaller the better) : {:?}",
         final_output
     );
+}
+
+#[test]
+fn test_reshape_4d_2d() {
+    let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let res_2d = reshape(&input.view(), (10, 25));
+    assert_eq!(res_2d.shape(), [10, 25]);
+    let res_4d = reshape(&res_2d.view(), (10, 1, 5, 5));
+    assert_eq!(res_4d.shape(), [10, 1, 5, 5]);
+    assert_eq!(input, res_4d);
+}
+
+#[test]
+fn test_reshape_4d_2d_with_minus() {
+    let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let res_2d = reshape(&input.view(), (10, 0));
+    assert_eq!(res_2d.shape(), [10, 25]);
+    let res_4d = reshape(&res_2d.view(), (0, 1, 5, 5));
+    assert_eq!(res_4d.shape(), [10, 1, 5, 5]);
+    assert_eq!(input, res_4d);
 }

@@ -30,7 +30,7 @@ extern crate utils;
 use utils::math::sigmoid;
 
 mod layer;
-use layer::{argmax, Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
+use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
 mod mnist;
 use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 
@@ -132,9 +132,9 @@ fn main() {
     let padding = 2; // To make 24x24 to 28x28
     let batch_size = 100;
     let mut convolution_layer = Convolution::new(batch_size, 30, 1, 5, 5, 1, padding);
+    let mut relu_layer = Relu::<Ix4>::new();
     let affine_output_size = 100;
     let mut affine_layer = Affine::new(30 * 28 * 28, affine_output_size);
-    let mut relu_layer = Relu::<Ix4>::new();
     let mut relu2_layer = Relu::<Ix2>::new();
     let mut affine2_layer = Affine::new(affine_output_size, 10);
     let mut softmax_layer = SoftmaxWithLoss::new();
@@ -220,7 +220,7 @@ fn main() {
         let affine_output = affine_layer.forward(&relu_output);
         let relu2_output = relu2_layer.forward(&affine_output);
         let affine2_output = affine2_layer.forward_2d(&relu2_output);
-        let affine2_output_argmax = argmax(&affine2_output, Axis(1));
+        let affine2_output_argmax = argmax2d(&affine2_output, Axis(1));
         let predicted_label = affine2_output_argmax[[0]];
         if predicted_label == mnist.label {
             test_correct_prediction += 1;
