@@ -69,7 +69,7 @@ impl MnistRecord {
                     s.push_str("O");
                     let c = self.dots[i * IMG_H_SIZE + j];
                     debug_assert!(c >= 0. && c <= 1., "MNIST dot must be 0 - 255");
-                    let p = (1. - c);
+                    let p = 1. - c;
                     if p < 0. {
                         println!("p : {}", p);
                     }

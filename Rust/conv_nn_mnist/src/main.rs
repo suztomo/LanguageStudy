@@ -5,7 +5,6 @@
 extern crate csv;
 use std::fs::File;
 use std::time::Instant;
-use std::{thread, time};
 
 #[macro_use]
 extern crate assert_approx_eq;
@@ -23,31 +22,15 @@ extern crate ndarray;
 extern crate ndarray_rand;
 extern crate rand;
 
-use ndarray_rand::{RandomExt, F32};
-use rand::distributions::{IndependentSample, Normal, Range};
-use rand::{thread_rng, Rng};
+use rand::{Rng};
 // use rand::Rng;
 use ndarray::prelude::*;
 extern crate utils;
-use utils::math::sigmoid;
 
 mod layer;
 use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
 mod mnist;
 use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
-
-fn sigmoid_derivative(x: f32) -> f32 {
-    // https://beckernick.github.io/sigmoid-derivative-neural-network/
-    let t = sigmoid(x);
-    t * (1.0 - t)
-}
-
-const ACTIVATION: &Fn(f32) -> f32 = &sigmoid;
-const ACTIVATION_PRIME: &Fn(f32) -> f32 = &sigmoid_derivative;
-
-fn activation_array(input: &Array2<f32>) -> Array2<f32> {
-    input.mapv(ACTIVATION)
-}
 
 lazy_static! {
     static ref INPUT_ZERO: Array2<f32> = Array::zeros((1, IMG_H_SIZE * IMG_W_SIZE));
@@ -141,7 +124,6 @@ fn main() {
     let mut affine2_layer = Affine::new(affine_output_size, 10);
     let mut softmax_layer = SoftmaxWithLoss::new();
 
-    let label_table = LabelTable::new();
     let before_training = Instant::now();
     let epoch = 10000;
     let learning_rate = -1.;
@@ -282,9 +264,9 @@ fn backprop_test() {
         break; // for testing
     }
     let epoch = 10;
-    for i in 0..epoch {
+    for _i in 0..epoch {
         for mnist in mnist_records.iter() {
-            let y = label_table.label_to_array(mnist.label);
+            let _y = label_table.label_to_array(mnist.label);
             //nn.feed_forward(&mnist.dots_array);
             //nn.back_prop(y);
         }
@@ -295,35 +277,10 @@ fn backprop_test() {
 fn test_generate_conv_input_array4() {
     let mnist_train_data_res = MnistRecord::load_from_csv("tests/mnist_test_10.csv");
     let mnist_train_data: Vec<MnistRecord> = mnist_train_data_res.unwrap();
-    let (m, answers) = generate_conv_input_array4(&mnist_train_data, 10);
+    let (m, _answers) = generate_conv_input_array4(&mnist_train_data, 10);
     assert_eq!(
         m.shape(),
         &[10, 1, 28, 28],
         "10 input, channel 1 (grayscale), width: 28 and height:28"
     );
-}
-
-struct S {
-    counter: i32,
-}
-impl<'a> S {
-    pub fn increment(&mut self) {
-        self.counter += 1;
-    }
-    pub fn increment_by(&mut self, inc: &'a Vec<i32>) {
-        for i in inc.iter() {
-            self.counter += i;
-        }
-    }
-}
-
-#[test]
-fn test_struct_reference() {
-    let mut s = S { counter: 0 };
-    for i in 0..10 {
-        let v = &vec![1, 2, 3];
-        s.increment_by(&v);
-        println!("i = {}", i);
-    }
-    println!("S.counter = {}", s.counter);
 }

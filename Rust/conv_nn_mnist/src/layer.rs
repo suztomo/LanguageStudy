@@ -2,14 +2,12 @@ use ndarray_rand::{RandomExt, F32};
 use rand::distributions::Normal;
 // use rand::Rng;
 use ndarray::prelude::*;
-use ndarray::Data;
 use ndarray::IntoDimension;
 use ndarray::Ix;
 use ndarray::Zip;
 use num_traits::identities::Zero;
 use std::f32;
 use std::fmt::Debug;
-use utils::math::sigmoid;
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
@@ -174,21 +172,21 @@ where
     let shape_str = format!("{:?}", &shape);
     let mut shape_dimension = shape.into_dimension().clone();
 
-    let mut zeroIndex: i32 = -1;
+    let mut zero_index: i32 = -1;
     let mut mulsum_newshape = 1;
     for (i, v) in shape_dimension.slice().iter().enumerate() {
         if *v < 1 {
             debug_assert!(
-                zeroIndex == -1,
+                zero_index == -1,
                 "Non-positive value can be passed once for the new shape"
             );
-            zeroIndex = i as i32;
+            zero_index = i as i32;
         } else {
             mulsum_newshape *= *v;
         }
     }
-    if zeroIndex >= 0 {
-        shape_dimension[zeroIndex as usize] = (mulsum / mulsum_newshape) as usize;
+    if zero_index >= 0 {
+        shape_dimension[zero_index as usize] = (mulsum / mulsum_newshape) as usize;
     }
 
     let mut input_copy = Array::zeros(input.raw_dim());
@@ -197,9 +195,11 @@ where
     match reshaped_res {
         Err(e) => {
             panic!(
-                "Failed to reshape the input (shape: {:?}) into {}. Error: {:?}",
+                "Failed to reshape the input (shape: {:?} mulsum: {}) into {} (mulsum: {}). Error: {:?}",
                 input.shape(),
+                mulsum,
                 shape_str,
+                mulsum_newshape,
                 e
             );
         }
@@ -240,8 +240,10 @@ impl<'a> Layer<'a> for Pooling {
         let reshaped_max = reshape(m.view(), (n_input, out_h, out_w, channel_count));
         let transposed_m = reshaped_max.permuted_axes([0, 3, 1, 2]);
 
+        // n_input, channel_count, out_h, out_w
         transposed_m
     }
+
     fn backward(&mut self, dout: &'a Matrix) -> Matrix {
         // In Numpy:
         //   dout = dout.transpose(0, 2, 3, 1)
@@ -254,7 +256,6 @@ impl<'a> Layer<'a> for Pooling {
         let dout_size: usize = dout_transposed.len();
         let mut dmax = Array2::<Elem>::zeros((dout_size, pool_size));
         println!("dmax shape: {:?}", dmax.shape());
-        // TODO: This is not implemented
 
         // In Numpy:
         //   dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
@@ -294,9 +295,6 @@ impl<'a> Layer<'a> for Pooling {
         );
 
         // dx = col2im(dcol, self.x.shape, self.pool_h, self.pool_w, self.stride, self.pad)
-        let dmax = Array4::<Elem>::zeros(self.last_input.raw_dim());
-
-        //     let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 0);
         let dx = col2im(
             &dcol,
             self.last_input.shape(),
@@ -363,7 +361,7 @@ impl SoftmaxWithLoss {
     pub fn new() -> SoftmaxWithLoss {
         let layer = SoftmaxWithLoss {
             y: Array::zeros((1, 1)),
-            t: Array::zeros((1)),
+            t: Array::zeros(1),
             loss: 0.,
         };
         layer
@@ -652,7 +650,7 @@ pub struct Convolution {
 
 impl<'a> Convolution {
     pub fn new(
-        n_input: usize,
+        _n_input: usize,
         filter_num: usize,
         filter_channel_count: usize,
         filter_height: usize,
@@ -809,7 +807,6 @@ fn broadcast_assign_test() {
     let y = Array::random(3, F32(Normal::new(0., 1.)));
     x.assign(&y);
     assert_eq!(x[[1, 1]], y[[1]]);
-    let z = Array::random(9, F32(Normal::new(0., 1.)));
     // The below raises:
     // ndarray: could not broadcast array from shape: [9] to: [9, 3]
     // x.assign(&z);
@@ -937,11 +934,11 @@ fn convolution_forward_test() {
 #[test]
 fn pooling_test() {
     let input = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
-    let dout = Array::random((10, 30, 3, 3), F32(Normal::new(0., 1.)));
     let mut pooling_layer = Pooling::new(3, 3, 1, 0);
-    let r = pooling_layer.forward(&input);
+    let out = pooling_layer.forward(&input);
+    let dout = &out / 10.;
     let dx = pooling_layer.backward(&dout);
-    assert_eq!(r.shape(), &[10, 3, 5, 5]);
+    assert_eq!(out.shape(), &[10, 3, 5, 5]);
     assert_eq!(
         dx.shape(),
         &[10, 3, 7, 7],
@@ -1194,7 +1191,7 @@ fn test_cross_entropy_error_exact_match() {
 
 #[test]
 fn test_differentiation_softmax_with_loss_input_all_zero() {
-    let mut input = Array2::zeros((3, 10));
+    let input = Array2::zeros((3, 10));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2]);
 
@@ -1208,7 +1205,7 @@ fn test_differentiation_softmax_with_loss() {
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    for i in 0..1000 {
+    for _ in 0..1000 {
         let output = softmax_with_loss_layer.forward(&input, &answer_array1);
         let dx = softmax_with_loss_layer.backward(output);
         assert_eq!(dx.shape(), input.shape());
@@ -1234,7 +1231,7 @@ fn test_differentiation_relu2() {
     answer[[8, 2]] = 1.;
     answer[[8, 0]] = 1.;
 
-    for i in 0..1000 {
+    for _ in 0..1000 {
         let mut output = relu2_layer.forward(&input);
         let dy = &answer - &output;
         let mut dx = relu2_layer.backward(&dy);
@@ -1267,7 +1264,7 @@ fn test_differentiation_relu4() {
     for i in 0..5 {
         answer[[0, 0, i, i]] = 1.;
     }
-    for i in 0..1 {
+    for _ in 0..1 {
         let mut output = relu_layer.forward(&input);
         let dy = &answer - &output;
         let mut dx = relu_layer.backward(&dy);
@@ -1295,7 +1292,7 @@ fn test_differentiation_relu4() {
 #[test]
 fn test_differentiation_affine() {
     let n_input = 1;
-    let mut input = Array::random((n_input, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let input = Array::random((n_input, 1, 5, 5), F32(Normal::new(0., 1.)));
     let affine_input_size = 1 * 5 * 5;
     let output_layer_size = 10;
     let mut layer = Affine::new(affine_input_size, output_layer_size);
@@ -1309,7 +1306,7 @@ fn test_differentiation_affine() {
         //println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
         let dy = &answer - &output;
         //println!("dy: {:?}\n", dy);
-        let dx = layer.backward(&dy);
+        let _dx = layer.backward(&dy);
         //println!("dx: {:?}", dx);
         //println!("d_weights: {:?}", layer.d_weights);
 
@@ -1354,7 +1351,7 @@ fn test_differentiation_affine_sample() {
         let output = layer.forward(&input);
         assert_eq!(output.shape(), [n_input, output_layer_size]);
         let dy = &answer - &output;
-        let dx = layer.backward(&dy);
+        let _dx = layer.backward(&dy);
         // Adjust weights
         layer.weights += &(&layer.d_weights * learning_rate);
         layer.bias += &(&layer.d_bias * learning_rate);
@@ -1383,8 +1380,8 @@ fn test_differentiation_softmax_sample() {
     let answer_array1 = arr1(&[3, 0, 8]);
 
     let learning_rate = 1.;
-    for i in 0..1 {
-        let output = softmax_layer.forward(&input, &answer_array1);
+    for _i in 0..1 {
+        let _output = softmax_layer.forward(&input, &answer_array1);
 
         // Somehow, the dout for the last layer is always 1.
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
