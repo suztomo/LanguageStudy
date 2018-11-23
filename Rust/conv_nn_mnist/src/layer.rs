@@ -8,6 +8,7 @@ use ndarray::Zip;
 use num_traits::identities::Zero;
 use std::f32;
 use std::fmt::Debug;
+use std::cmp::min;
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
@@ -88,11 +89,6 @@ impl<'a> Affine {
         };
         layer
     }
-    /* Can Affine implement Layer so that the layer has consistency in input
-      and output shape? Problem is that Affine in the example code forwards
-      Matrix (Array2), while Layer expects Array4 of (N, C, H, W)
-    } 
-    impl<'a> Layer<'a> for Affine {*/
 
     pub fn forward_2d(&mut self, x: &'a Array2<Elem>) -> Array2<Elem> {
         debug_assert_eq!(
@@ -108,15 +104,15 @@ impl<'a> Affine {
         // self.bias: (hidden_size)
         // output: (N, hidden_size)
         let output = input_by_weights + &self.bias;
-        // Isn't output a matrix? It should output as (N, C, H, W) in order to feed the output
-        // back to Convolution etc.
-        // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
-        // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
         output
     }
 
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
+        // Isn't output a matrix? It should output as (N, C, H, W) in order to feed the output
+        // back to Convolution etc.
+        // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
+        // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
         self.forward_2d(&conv4d_to_2d(&x))
     }
 
@@ -152,15 +148,6 @@ impl<'a> Affine {
     }
 }
 
-#[derive(Debug)]
-pub struct Pooling {
-    pool_h: usize,
-    pool_w: usize,
-    stride: usize,
-    pad: usize,
-    last_input: Matrix, // x in the book. Owned?
-    argmax: Array1<usize>,
-}
 
 fn reshape<E, A, D>(input: ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
 where
@@ -207,6 +194,16 @@ where
     }
 }
 
+#[derive(Debug)]
+pub struct Pooling {
+    pool_h: usize,
+    pool_w: usize,
+    stride: usize,
+    pad: usize,
+    last_input: Matrix, // x in the book. Owned?
+    argmax: Array1<usize>,
+}
+
 impl<'a> Pooling {
     pub fn new(pool_h: usize, pool_w: usize, stride: usize, pad: usize) -> Pooling {
         let pooling = Pooling {
@@ -228,6 +225,11 @@ impl<'a> Layer<'a> for Pooling {
         let (n_input, channel_count, input_height, input_width) = x.dim();
         let out_h = 1 + (input_height - self.pool_h) / self.stride;
         let out_w = 1 + (input_width - self.pool_w) / self.stride;
+//        println!("input_height: {}, self.pool_h: {}, self.stride: {}", input_height, self.pool_h, self.stride);
+//        println!("input_width: {}, self.pool_w: {}, self.stride: {}", input_width, self.pool_w, self.stride);
+//        println!("x.shape: {:?}, pool_h: {}, pool_w: {}, stride: {}, pad: {}", x.shape(),
+//             self.pool_h, self.pool_w, self.stride, self.pad);
+        // 'Slice end 29 is past end of axis of length 28'
         let input_col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad);
         let reshaped_col = reshape(input_col.view(), (0, self.pool_h * self.pool_w));
         // arg_max = np.argmax(col, axis=1). The return value is 1-dimension.
@@ -248,14 +250,14 @@ impl<'a> Layer<'a> for Pooling {
         // In Numpy:
         //   dout = dout.transpose(0, 2, 3, 1)
 
-        println!("argmax shape: {:?}", self.argmax.shape());
-        println!("dout shape: {:?}", dout.shape());
+//        println!("argmax shape: {:?}", self.argmax.shape());
+//        println!("dout shape: {:?}", dout.shape());
         let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
         let dout_size: usize = dout_transposed.len();
         let mut dmax = Array2::<Elem>::zeros((dout_size, pool_size));
-        println!("dmax shape: {:?}", dmax.shape());
+//        println!("dmax shape: {:?}", dmax.shape());
 
         // In Numpy:
         //   dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
@@ -477,12 +479,13 @@ fn im2col(
     //    [1, 2, 3],
     //    [4, 5, 6],
     //    [0, 0, 0]])
-
+    let input_padded_height = input_height + 2 * pad;
+    let input_padded_width = input_width + 2 * pad;
     let mut img: Array4<Elem> = Array4::<Elem>::zeros((
         n_input,
         channel_count,
-        input_height + 2 * pad,
-        input_width + 2 * pad,
+        input_padded_height,
+        input_padded_width
     ));
     // Example:
     // input_width:5, padding: 2, then 0, 1, 2, 3, 4, 5, 6, 7, 8
@@ -507,9 +510,9 @@ fn im2col(
         out_w,
     ));
     for y in 0..filter_height {
-        let y_max = y + stride * out_h;
+        let y_max = min(y + stride * out_h, input_padded_height);
         for x in 0..filter_width {
-            let x_max = x + stride * out_w;
+            let x_max = min(x + stride * out_w, input_padded_width);
             // What is it doing? I think copying something. img is 4-dimensional.
             // What's the syntax of 'y:y_max:stride'?
             // col[:, :, y, x, :, :] = img[:, :, y:y_max:stride, x:x_max:stride]
@@ -535,6 +538,8 @@ fn im2col(
             // Slice to assign ndarray values at once.
             // https://docs.rs/ndarray/0.11.2/ndarray/struct.ArrayBase.html#slicing
             // and https://docs.rs/ndarray/0.12.0/ndarray/macro.s.html
+
+            // Interestingly numpy's slice doesn't fail when max exceeds the limit
             let img_slice = img.slice(s![.., .., y..y_max;stride, x..x_max;stride]);
             let mut col_slice_mut = col.slice_mut(s![.., .., y, x, .., ..]);
             col_slice_mut.assign(&img_slice);
@@ -691,24 +696,9 @@ impl<'a> Convolution {
     }
 }
 
-/* Attempt to let programmers to use -1 for reshape e.g., input.reshape(FN, out_h, out_w, -1)
-   usize doesn't allow -1
-
-fn reshape(input: ArrayBase<Elem>, into_shape: &[i32]) {
-    let mut shape = into_shape[:];
-    // Get multiply-sum of elements excepts -1
-    let mul_total_input = input.shape().iter().fold(1, |sum, val| sum * val);
-    let mul_total_shape = out.shape().iter().fold(1, |sum, val| sum * (if val > 0 { val } else { 1 } ));
-    for i in shape.iter_mut() {
-        if (i < 0) {
-            *i = mul_total_input / mul_total_shape;
-        }
-    }
-    input.into_shape(shape)
-}
-*/
 impl<'a> Layer<'a> for Convolution {
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
+        // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L214
         //  (something)x(filter_height*filter_width*channel) matrix
         let (n_input, channel_count, input_height, input_width) = x.dim();
         let (n_filter, filter_channel_count, filter_height, filter_width) = self.weights.dim();
@@ -727,7 +717,6 @@ impl<'a> Layer<'a> for Convolution {
             self.pad,
         );
 
-        // let reshaping_column_count = filter_channel_count * filter_height * filter_width;
         let weight_reshaped = reshape(self.weights.view(), (n_filter, 0));
         debug_assert_eq!(
             weight_reshaped.shape()[0],
@@ -745,6 +734,7 @@ impl<'a> Layer<'a> for Convolution {
             col_weight.shape()[0],
             "The matrix multiplication should work with these dimensions"
         );
+        //   out = np.dot(col, col_W) + self.b
         let input_weight_multi = col.dot(&col_weight);
         // Error as of September 18th:
         //   darray: could not broadcast array from shape: [3] to: [90, 10]'
@@ -753,7 +743,6 @@ impl<'a> Layer<'a> for Convolution {
         let out = input_weight_multi + &self.bias;
         // In Numpy:
         //   out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
-        //        let out_shape = &out.shape();
         let out_reshaped = reshape(out.view(), (n_input, out_h, out_w, 0));
         let out_transposed = out_reshaped.permuted_axes([0, 3, 1, 2]);
         self.last_input = x.to_owned();
@@ -856,6 +845,14 @@ fn assign_test() {
 }
 
 #[test]
+fn im2col_stride2_test() {
+    // n_input, channel_count, input_height, input_width
+    let input = Array::random((100, 30, 28, 28), F32(Normal::new(0., 1.)));
+    let col2: Array2<Elem> = im2col(&input, 2, 2, 2, 0);
+    assert_eq!(col2.shape(), [19600, 120]);
+}
+
+#[test]
 fn im2col_shape_test() {
     /* The test below runs more than 1 minute
     let input1 = Array4::zeros((9, 3, 100, 100));
@@ -866,10 +863,10 @@ fn im2col_shape_test() {
     // n_input, channel_count, input_height, input_width
     let input2 = Array::random((1, 3, 7, 7), F32(Normal::new(0., 1.)));
     let col2: Array2<Elem> = im2col(&input2, 5, 5, 1, 0);
-    assert_eq!(col2.shape(), &[1 * 3 * 3, 5 * 5 * 3]);
+    assert_eq!(col2.shape(), [1 * 3 * 3, 5 * 5 * 3]);
     let input3 = Array::random((10, 3, 7, 7), F32(Normal::new(0., 1.)));
     let col3: Array2<Elem> = im2col(&input3, 5, 5, 1, 0);
-    assert_eq!(col3.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
+    assert_eq!(col3.shape(), [10 * 3 * 3, 5 * 5 * 3]);
 }
 
 #[test]
@@ -878,7 +875,7 @@ fn im2col_shape_pad_test() {
     let col4: Array2<Elem> = im2col(&input4, 5, 5, 1, 2); // pad:2
                                                           // 7/5 -> 3
                                                           // 11/5 -> 7 This is out_h and out_w
-    assert_eq!(col4.shape(), &[1 * 7 * 7, 5 * 5 * 3]);
+    assert_eq!(col4.shape(), [1 * 7 * 7, 5 * 5 * 3]);
 }
 
 #[test]

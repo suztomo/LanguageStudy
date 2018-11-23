@@ -28,7 +28,7 @@ use ndarray::prelude::*;
 extern crate utils;
 
 mod layer;
-use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
+use layer::{argmax2d, Affine, Convolution, Pooling, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
 mod mnist;
 use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 
@@ -114,12 +114,14 @@ fn main() {
         MnistRecord::load_from_csv("mnist_test.csv").unwrap();
 
     // Initialize layers
-    let padding = 2; // To make 24x24 to 28x28
+    // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py
+    let padding = 0; // To make 24x24 to 28x28
     let batch_size = 100;
     let mut convolution_layer = Convolution::new(batch_size, 30, 1, 5, 5, 1, padding);
     let mut relu_layer = Relu::<Ix4>::new();
+    let mut pooling_layer = Pooling::new(2, 2, 2, 0);
     let affine_output_size = 100;
-    let mut affine_layer = Affine::new(30 * 28 * 28, affine_output_size);
+    let mut affine_layer = Affine::new(4320, affine_output_size);
     let mut relu2_layer = Relu::<Ix2>::new();
     let mut affine2_layer = Affine::new(affine_output_size, 10);
     let mut softmax_layer = SoftmaxWithLoss::new();
@@ -142,6 +144,9 @@ fn main() {
 
         // nchw: borrowed value does not live long enough
         // hchw is used only to train the internal values of the layer
+        if i == 0 {
+            println!("nchw shape: {:?}", nchw.shape());
+        }
         let conv_output = convolution_layer.forward(&nchw);
         if i == 0 {
             println!("conv_output shape: {:?}", conv_output.shape());
@@ -150,7 +155,11 @@ fn main() {
         if i == 0 {
             println!("relu_output shape: {:?}", relu_output.shape());
         }
-        let affine_output = affine_layer.forward(&relu_output);
+        let pooling_output = pooling_layer.forward(&relu_output);
+        if i == 0 {
+            println!("pooling_output shape: {:?}", pooling_output.shape());
+        }
+        let affine_output = affine_layer.forward(&pooling_output);
         if i == 0 {
             println!("affine_output shape: {:?}", affine_output.shape());
         }
@@ -186,7 +195,8 @@ fn main() {
         let affine_dx = affine_layer.backward(&relu2_dx);
         affine_layer.weights += &(&affine_layer.d_weights * learning_rate);
         affine_layer.bias += &(&affine_layer.d_bias * learning_rate);
-        let relu_dx = relu_layer.backward(&affine_dx);
+        let pooling_dx = pooling_layer.backward(&affine_dx);
+        let relu_dx = relu_layer.backward(&pooling_dx);
         let _conv_dx = convolution_layer.backward(&relu_dx);
         convolution_layer.weights += &(&convolution_layer.d_weights * learning_rate);
         convolution_layer.bias += &(&convolution_layer.d_bias * learning_rate);
