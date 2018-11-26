@@ -22,15 +22,17 @@ extern crate ndarray;
 extern crate ndarray_rand;
 extern crate rand;
 
-use rand::{Rng};
+use rand::Rng;
 // use rand::Rng;
 use ndarray::prelude::*;
 extern crate utils;
 
 mod layer;
-use layer::{argmax2d, Affine, Convolution, Pooling, Elem, Layer, Matrix, Relu, SoftmaxWithLoss};
+use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss};
 mod mnist;
 use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
+
+mod gradient;
 
 lazy_static! {
     static ref INPUT_ZERO: Array2<f32> = Array::zeros((1, IMG_H_SIZE * IMG_W_SIZE));
@@ -184,8 +186,10 @@ fn main() {
         );
 
         // Backward
-        // Somehow backpropagation of softmax always takes 1.0
+        // Somehow backpropagation of softmax always takes 1.0.
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
+        // This is because softmax_with_loss.backward discards the input value.
+        // The returned value from backward only depends on the layer's internal state.
         let softmax_dx = softmax_layer.backward(1.);
         let affine2_dx = affine2_layer.backward_2d(&softmax_dx);
         affine2_layer.weights += &(&affine2_layer.d_weights * learning_rate);

@@ -6,9 +6,9 @@ use ndarray::IntoDimension;
 use ndarray::Ix;
 use ndarray::Zip;
 use num_traits::identities::Zero;
+use std::cmp::min;
 use std::f32;
 use std::fmt::Debug;
-use std::cmp::min;
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
@@ -41,6 +41,7 @@ lazy_static! {
 pub type Elem = f32;
 // Following the book's interface of having 4-dimensional array as input of each layer
 pub type Matrix = Array4<Elem>;
+// pub type MatrixView = ArrayView4<Elem>;
 
 // Common method that's applicable for all layer
 pub trait Layer<'a> {
@@ -58,10 +59,10 @@ pub struct Affine {
     pub d_bias: Array1<Elem>,
 }
 
-fn conv4d_to_2d(x: &Matrix) -> Array2<Elem> {
+fn conv4d_to_2d(x: ArrayView4<Elem>) -> Array2<Elem> {
     let (n_input, _channel_size, _input_height, _input_width) = x.dim();
     // (N, channel_size*height*width)
-    reshape(x.view(), (n_input, 0))
+    reshape(x, (n_input, 0))
 }
 
 impl<'a> Affine {
@@ -106,14 +107,16 @@ impl<'a> Affine {
         let output = input_by_weights + &self.bias;
         output
     }
-
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
+        self.forward_view(x.view())
+    }
+    pub fn forward_view(&mut self, x: ArrayView4<Elem>) -> Array2<Elem> {
         self.original_shape.clone_from_slice(x.shape());
         // Isn't output a matrix? It should output as (N, C, H, W) in order to feed the output
         // back to Convolution etc.
         // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
         // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
-        self.forward_2d(&conv4d_to_2d(&x))
+        self.forward_2d(&conv4d_to_2d(x))
     }
 
     pub fn backward_2d(&mut self, dout: &'a Array2<Elem>) -> Array2<Elem> {
@@ -147,7 +150,6 @@ impl<'a> Affine {
         )
     }
 }
-
 
 fn reshape<E, A, D>(input: ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
 where
@@ -225,10 +227,10 @@ impl<'a> Layer<'a> for Pooling {
         let (n_input, channel_count, input_height, input_width) = x.dim();
         let out_h = 1 + (input_height - self.pool_h) / self.stride;
         let out_w = 1 + (input_width - self.pool_w) / self.stride;
-//        println!("input_height: {}, self.pool_h: {}, self.stride: {}", input_height, self.pool_h, self.stride);
-//        println!("input_width: {}, self.pool_w: {}, self.stride: {}", input_width, self.pool_w, self.stride);
-//        println!("x.shape: {:?}, pool_h: {}, pool_w: {}, stride: {}, pad: {}", x.shape(),
-//             self.pool_h, self.pool_w, self.stride, self.pad);
+        //        println!("input_height: {}, self.pool_h: {}, self.stride: {}", input_height, self.pool_h, self.stride);
+        //        println!("input_width: {}, self.pool_w: {}, self.stride: {}", input_width, self.pool_w, self.stride);
+        //        println!("x.shape: {:?}, pool_h: {}, pool_w: {}, stride: {}, pad: {}", x.shape(),
+        //             self.pool_h, self.pool_w, self.stride, self.pad);
         // 'Slice end 29 is past end of axis of length 28'
         let input_col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad);
         let reshaped_col = reshape(input_col.view(), (0, self.pool_h * self.pool_w));
@@ -250,14 +252,14 @@ impl<'a> Layer<'a> for Pooling {
         // In Numpy:
         //   dout = dout.transpose(0, 2, 3, 1)
 
-//        println!("argmax shape: {:?}", self.argmax.shape());
-//        println!("dout shape: {:?}", dout.shape());
+        //        println!("argmax shape: {:?}", self.argmax.shape());
+        //        println!("dout shape: {:?}", dout.shape());
         let dout_transposed = dout.view().permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
         let dout_size: usize = dout_transposed.len();
         let mut dmax = Array2::<Elem>::zeros((dout_size, pool_size));
-//        println!("dmax shape: {:?}", dmax.shape());
+        //        println!("dmax shape: {:?}", dmax.shape());
 
         // In Numpy:
         //   dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
@@ -316,7 +318,7 @@ pub struct SoftmaxWithLoss {
     loss: Elem,
 }
 
-fn softmax_array2(x: &Array2<Elem>) -> Array2<Elem> {
+fn softmax_array2(x: ArrayView2<Elem>) -> Array2<Elem> {
     // [ [0.1, 0.5, 0.8],   1st data
     //   [0.3, 0.2, 0.9] ]  2nd data
     // then softmax is to make the biggest bigger, smallers to smaller:
@@ -369,6 +371,9 @@ impl SoftmaxWithLoss {
         layer
     }
     pub fn forward(&mut self, x: &Array2<Elem>, t: &Array1<usize>) -> Elem {
+        self.forward_view(x.view(), t)
+    }
+    pub fn forward_view(&mut self, x: ArrayView2<Elem>, t: &Array1<usize>) -> Elem {
         debug_assert_eq!(x.shape()[0], t.shape()[0]);
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L70
 
@@ -485,7 +490,7 @@ fn im2col(
         n_input,
         channel_count,
         input_padded_height,
-        input_padded_width
+        input_padded_width,
     ));
     // Example:
     // input_width:5, padding: 2, then 0, 1, 2, 3, 4, 5, 6, 7, 8
@@ -1034,7 +1039,7 @@ fn test_softmax_with_loss() {
 #[test]
 fn test_softmax_array2() {
     let input = arr2(&[[0.2, 0.8, 0.1], [-0.5, 0.2, 0.9]]);
-    let res = softmax_array2(&input);
+    let res = softmax_array2(input.view());
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
     assert_eq!(sum.shape(), &[2]);
@@ -1072,7 +1077,7 @@ fn test_softmax_array2() {
 #[test]
 fn test_softmax_array2_minus() {
     let input = arr2(&[[-5., 4., -4.], [-50., -40., 40.]]);
-    let res = softmax_array2(&input);
+    let res = softmax_array2(input.view());
     assert_eq!(res.shape(), &[2, 3]);
     let sum = res.sum_axis(Axis(1));
     assert_eq!(sum.shape(), &[2]);
