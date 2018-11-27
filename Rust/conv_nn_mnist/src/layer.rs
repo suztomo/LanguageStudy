@@ -91,6 +91,17 @@ impl<'a> Affine {
         layer
     }
 
+    pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
+        self.forward_view(x.view())
+    }
+    pub fn forward_view(&mut self, x: ArrayView4<Elem>) -> Array2<Elem> {
+        self.original_shape.clone_from_slice(x.shape());
+        // Isn't output a matrix? It should output as (N, C, H, W) in order to feed the output
+        // back to Convolution etc.
+        // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
+        // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
+        self.forward_2d(&conv4d_to_2d(x))
+    }
     pub fn forward_2d(&mut self, x: &'a Array2<Elem>) -> Array2<Elem> {
         debug_assert_eq!(
             x.shape()[1],
@@ -106,17 +117,6 @@ impl<'a> Affine {
         // output: (N, hidden_size)
         let output = input_by_weights + &self.bias;
         output
-    }
-    pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
-        self.forward_view(x.view())
-    }
-    pub fn forward_view(&mut self, x: ArrayView4<Elem>) -> Array2<Elem> {
-        self.original_shape.clone_from_slice(x.shape());
-        // Isn't output a matrix? It should output as (N, C, H, W) in order to feed the output
-        // back to Convolution etc.
-        // As per https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch08/deep_convnet.py,
-        // The output of Affine never goes to Convolution layer that expects (N, C, H, W)
-        self.forward_2d(&conv4d_to_2d(x))
     }
 
     pub fn backward_2d(&mut self, dout: &'a Array2<Elem>) -> Array2<Elem> {
@@ -1292,36 +1292,64 @@ fn test_differentiation_relu4() {
 }
 
 #[test]
-fn test_differentiation_affine() {
-    let n_input = 1;
+fn test_differentiation_affine_input_gradient() {
+    let n_input = 10;
+    let mut input = Array::random((n_input, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let affine_input_size = 1 * 5 * 5;
+    let output_layer_size = 10;
+    let mut layer = Affine::new(affine_input_size, output_layer_size);
+
+    let learning_rate = 0.1;
+
+    // Introducing softmax_with_loss to calculate the loss
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
+
+    for i in 0..1000 {
+        let output = layer.forward(&input);
+        assert_eq!(output.shape(), [n_input, output_layer_size]);
+        let loss = softmax_with_loss_layer.forward(&output, &answer_array1);
+        let dout = softmax_with_loss_layer.backward(1.);
+        let dx = layer.backward(&dout);
+
+        // Adjust input
+        input -= &(&dx * learning_rate);
+    }
+    let answer_from_layer = layer.forward(&input);
+    let loss = softmax_with_loss_layer.forward(&answer_from_layer, &answer_array1);
+    assert_approx_eq!(loss, 0.0, 0.01);
+}
+
+#[test]
+fn test_differentiation_affine_weight_gradient() {
+    let n_input = 10;
     let input = Array::random((n_input, 1, 5, 5), F32(Normal::new(0., 1.)));
     let affine_input_size = 1 * 5 * 5;
     let output_layer_size = 10;
     let mut layer = Affine::new(affine_input_size, output_layer_size);
 
-    let answer = Array::random((n_input, output_layer_size), F32(Normal::new(0., 1.)));
-    let learning_rate = 0.01;
+    let learning_rate = 0.1;
 
-    for _i in 0..1000 {
+    // Introducing softmax_with_loss to calculate the loss
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
+
+    for i in 0..1000 {
         let output = layer.forward(&input);
         assert_eq!(output.shape(), [n_input, output_layer_size]);
-        //println!("output: {:?}\n\nanswer:{:?}\n", output, answer);
-        let dy = &answer - &output;
-        //println!("dy: {:?}\n", dy);
-        let _dx = layer.backward(&dy);
-        //println!("dx: {:?}", dx);
-        //println!("d_weights: {:?}", layer.d_weights);
+        let loss = softmax_with_loss_layer.forward(&output, &answer_array1);
+        let dout = softmax_with_loss_layer.backward(1.);
+        let _dx = layer.backward(&dout);
 
         // Adjust weights
-        layer.weights += &(&layer.d_weights * learning_rate);
-        layer.bias += &(&layer.d_bias * learning_rate);
-        //input -= &(&dx * learning_rate);
+        layer.weights -= &(&layer.d_weights * learning_rate);
+        layer.bias -= &(&layer.d_bias * learning_rate);
     }
     let answer_from_layer = layer.forward(&input);
-    Zip::from(&answer_from_layer).and(&answer).apply(|a, b| {
-        assert_approx_eq!(a, b, 0.01);
-    });
+    let loss = softmax_with_loss_layer.forward(&answer_from_layer, &answer_array1);
+    assert_approx_eq!(loss, 0.0, 0.05);
 }
+
 
 #[test]
 fn test_differentiation_affine_sample() {
@@ -1381,24 +1409,22 @@ fn test_differentiation_softmax_sample() {
     // 3 inputs
     let answer_array1 = arr1(&[3, 0, 8]);
 
-    let learning_rate = 1.;
-    for _i in 0..1 {
+    let learning_rate = 0.01;
+    for _i in 0..1000 {
         let _output = softmax_layer.forward(&input, &answer_array1);
 
         // Somehow, the dout for the last layer is always 1.
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
+        // It's because backward discards the argument.
         let dx = softmax_layer.backward(1.);
 
-        // Is this appropriate to subtract dx from input?
+        // Is this appropriate to subtract dx from input? Yes, because
+        // dx and dy are both positive.
         input -= &(dx * learning_rate);
     }
-    println!("input value? : {:?}", &input);
     let final_output = softmax_layer.forward(&input, &answer_array1);
 
-    println!(
-        "Input got adjusted? (smaller the better) : {:?}",
-        final_output
-    );
+    assert!(final_output < 0.01, "The softmax layer should adjust the input via dx");
 }
 
 #[test]
