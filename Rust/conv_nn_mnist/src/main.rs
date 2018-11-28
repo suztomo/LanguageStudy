@@ -129,8 +129,8 @@ fn main() {
     let mut softmax_layer = SoftmaxWithLoss::new();
 
     let before_training = Instant::now();
-    let epoch = 10000;
-    let learning_rate = -1.;
+    let epoch = 1000;
+    let learning_rate = 0.1;
 
     // This needs to be in the for-loop. However, even when this is outside the loop,
     // the learning rate (softmax_output) does not improve over iteration. Why?
@@ -180,6 +180,7 @@ fn main() {
 
         // It always stick to 3.3219. Why? It looks like the all elements of affine2_output
         // are close to zero. The feedback is not working as expected.
+        // As of Nov 29th, it always stick to ~2.30 after fixing softmax.forward
         println!(
             "Finished epoch {}. softmax_output (smaller, the better): {}",
             i, softmax_output
@@ -192,18 +193,18 @@ fn main() {
         // The returned value from backward only depends on the layer's internal state.
         let softmax_dx = softmax_layer.backward(1.);
         let affine2_dx = affine2_layer.backward_2d(&softmax_dx);
-        affine2_layer.weights += &(&affine2_layer.d_weights * learning_rate);
-        affine2_layer.bias += &(&affine2_layer.d_bias * learning_rate);
+        affine2_layer.weights -= &(&affine2_layer.d_weights * learning_rate);
+        affine2_layer.bias -= &(&affine2_layer.d_bias * learning_rate);
 
         let relu2_dx = relu2_layer.backward(&affine2_dx);
         let affine_dx = affine_layer.backward(&relu2_dx);
-        affine_layer.weights += &(&affine_layer.d_weights * learning_rate);
-        affine_layer.bias += &(&affine_layer.d_bias * learning_rate);
+        affine_layer.weights -= &(&affine_layer.d_weights * learning_rate);
+        affine_layer.bias -= &(&affine_layer.d_bias * learning_rate);
         let pooling_dx = pooling_layer.backward(&affine_dx);
         let relu_dx = relu_layer.backward(&pooling_dx);
         let _conv_dx = convolution_layer.backward(&relu_dx);
-        convolution_layer.weights += &(&convolution_layer.d_weights * learning_rate);
-        convolution_layer.bias += &(&convolution_layer.d_bias * learning_rate);
+        convolution_layer.weights -= &(&convolution_layer.d_weights * learning_rate);
+        convolution_layer.bias -= &(&convolution_layer.d_bias * learning_rate);
     }
     println!(
         "Finished training set in {} secs. Running in test set.",
@@ -215,7 +216,8 @@ fn main() {
         let nchw = mnist_to_nchw(&mnist);
         let conv_output = convolution_layer.forward(&nchw);
         let relu_output = relu_layer.forward(&conv_output);
-        let affine_output = affine_layer.forward(&relu_output);
+        let pooling_output = pooling_layer.forward(&relu_output);
+        let affine_output = affine_layer.forward(&pooling_output);
         let relu2_output = relu2_layer.forward(&affine_output);
         let affine2_output = affine2_layer.forward_2d(&relu2_output);
         let affine2_output_argmax = argmax2d(&affine2_output, Axis(1));

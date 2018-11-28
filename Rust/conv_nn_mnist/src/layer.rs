@@ -16,7 +16,9 @@ lazy_static! {
     static ref INPUT_ARRAY2_ZERO: Array2<Elem> = Array::zeros((1, 1));
 }
 
-pub fn F64<T>(v: T) -> T { v }
+pub fn F64<T>(v: T) -> T {
+    v
+}
 
 // The implementaiton of the book leverages the layer-based implementation
 // In Python, the simple RELU in the book https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py
@@ -69,13 +71,9 @@ fn conv4d_to_2d(x: ArrayView4<Elem>) -> Array2<Elem> {
 }
 
 impl<'a> Affine {
-    pub fn new(input_size: usize, hidden_size: usize) -> Affine {
-        let initial_weights = Array::random((input_size, hidden_size), F64(Normal::new(0., 1.)));
-        // Initial weights for debugging was arr2(&[[0.8520029, -1.1546916, 0.5509542],
-        // [-0.74658644, 0.8143777, 0.7891202],
-        // [1.1643051, -0.7081804, 0.4132015],
-        // [-1.7494456, 0.9154338, -1.5571696]]);
-        let layer = Affine {
+    pub fn new_with(initial_weights: Array2<Elem>) -> Affine {
+        let hidden_size = initial_weights.shape()[1];
+        Affine {
             original_shape: [0, 0, 0, 0],
             // In Numpy, the weights shape is (pool_output_size, pool_output_size) and
             //           the bias shape is (hidden_size)
@@ -90,8 +88,12 @@ impl<'a> Affine {
             // The filter_num matches the number of channels in output feature map
             bias: Array1::zeros(hidden_size),
             d_bias: Array1::zeros(hidden_size),
-        };
-        layer
+        }
+    }
+
+    pub fn new(input_size: usize, hidden_size: usize) -> Affine {
+        let initial_weights = Array::random((input_size, hidden_size), F64(Normal::new(0., 1.)));
+        Self::new_with(initial_weights)
     }
 
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {
@@ -154,7 +156,7 @@ impl<'a> Affine {
     }
 }
 
-fn reshape<E, A, D>(input: ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
+pub fn reshape<E, A, D>(input: ArrayView<A, D>, shape: E) -> Array<A, E::Dim>
 where
     D: Dimension,
     E: IntoDimension + Debug,
@@ -316,8 +318,8 @@ impl<'a> Layer<'a> for Pooling {
 
 #[derive(Debug)]
 pub struct SoftmaxWithLoss {
-    pub y: Array2<Elem>,  // output
-    t: Array1<usize>, // answers for each input
+    pub y: Array2<Elem>, // output
+    t: Array1<usize>,    // answers for each input
 }
 
 fn softmax_array2(x: ArrayView2<Elem>) -> Array2<Elem> {
@@ -353,7 +355,7 @@ fn cross_entropy_error(y: &Array2<Elem>, answer_labels: &Array1<usize>) -> Elem 
     // It seems this calculates values of errors across batches
     // The first time to mix data across batches
 
-    let mut sum:Elem = 0.;
+    let mut sum: Elem = 0.;
     for i in 0..batch_size {
         // 0 - 9
         let answer_index = answer_labels[i];
@@ -378,8 +380,11 @@ impl SoftmaxWithLoss {
         self.forward_view(x.view(), t)
     }
     pub fn forward_view(&mut self, x: ArrayView2<Elem>, t: &Array1<usize>) -> Elem {
-        debug_assert_eq!(x.shape()[0], t.shape()[0],
-        "The batch size of x and target does not match");
+        debug_assert_eq!(
+            x.shape()[0],
+            t.shape()[0],
+            "The batch size of x and target does not match"
+        );
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L70
 
         // What's softmax for 2 dimensional array?
@@ -1367,7 +1372,6 @@ fn test_differentiation_affine_weight_gradient() {
     let loss = softmax_with_loss_layer.forward(&answer_from_layer, &answer_array1);
     assert_approx_eq!(loss, 0.0, 0.05);
 }
-
 
 #[test]
 fn test_differentiation_affine_sample() {
