@@ -5,12 +5,12 @@ use ndarray::IntoDimension;
 use ndarray::Ix;
 use ndarray::Zip;
 use ndarray::{arr2, arr3};
-use ndarray_rand::{RandomExt, F32};
+use ndarray_rand::{RandomExt};
 use num_traits::identities::Zero;
 use rand::distributions::Normal;
 use std::cmp::max;
 
-use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss};
+use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss, F64};
 
 // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/gradient.py
 
@@ -21,7 +21,7 @@ where
 {
     // As per test_numerical_gradient_array2_different_h, 0.0001 gives good result for
     // our softmax_with_loss function
-    numerical_gradient_array_h(x, f, 0.0001)
+    numerical_gradient_array_h(x, f, 0.00001)
 }
 
 fn numerical_gradient_array_h<D, F>(x: &Array<Elem, D>, mut f: F, h: Elem) -> Array<Elem, D>
@@ -94,14 +94,14 @@ fn test_numerical_gradient_array2_different_h() {
     let mut softmax_with_loss_layer_numerical_gradient = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    let input = Array::random((10, 3), F32(Normal::new(0., 1.)));
+    let input = Array::random((10, 3), F64(Normal::new(0., 1.)));
 
     let mut softmax_with_loss_layer_analytical_gradient = SoftmaxWithLoss::new();
     let _ = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
     let analytical_gradient = softmax_with_loss_layer_analytical_gradient.backward(1.);
 
     for i in -10..0 {
-        let ten = 10.0_f32;
+        let ten:Elem = 10.0;
         let h = ten.powi(i);
 
         let f = |x: ArrayView2<Elem>| -> Elem {
@@ -128,7 +128,7 @@ fn test_numerical_gradient_array2() {
     let mut softmax_with_loss_layer_numerical_gradient = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    let input = Array::random((10, 3), F32(Normal::new(0., 1.)));
+    let input = Array::random((10, 3), F64(Normal::new(0., 1.)));
 
     let mut softmax_with_loss_layer_analytical_gradient = SoftmaxWithLoss::new();
     let _ = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
@@ -146,12 +146,14 @@ fn test_numerical_gradient_array2() {
             assert_approx_eq!(*a, *b, 0.05);
         });
     // 0.3047206 (relative error) > 1e-2 (0.01) usually means the gradient is probably wrong
-    println!("relative error: {}", relative_error(&numerical_gradient, &analytical_gradient));
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+    assert_approx_eq!(rel_error, 0., 0.01);
 }
 
 #[test]
 fn test_numerical_gradient_arraysum() {
-    let input = Array::random((5, 5), F32(Normal::new(0., 1.)));
+    let input = Array::random((5, 5), F64(Normal::new(0., 1.)));
 
     let f = |x: ArrayView2<Elem>| -> Elem {
         let s = x.shape();
@@ -164,7 +166,7 @@ fn test_numerical_gradient_arraysum() {
         loss
     };
     for i in -10..0 {
-        let ten = 10.0_f32;
+        let ten:Elem = 10.0;
         let h = ten.powi(i);
         let numerical_gradient = numerical_gradient_array_h(&input, f, h);
         assert_eq!(input.shape(), numerical_gradient.shape());
@@ -184,7 +186,7 @@ fn test_numerical_gradient_array4() {
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let input = Array::random((10, 1, 5, 5), F64(Normal::new(0., 1.)));
     let f = |x: ArrayView4<Elem>| -> Elem {
         let x2 = affine_layer.forward_view(x);
         let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
@@ -201,7 +203,7 @@ fn test_compare_numerical_gradient_array4() {
     let mut affine_layer = Affine::new(25, 10);
 
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
-    let input = Array::random((10, 1, 5, 5), F32(Normal::new(0., 1.)));
+    let input = Array::random((10, 1, 5, 5), F64(Normal::new(0., 1.)));
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
     let affine_output = affine_layer.forward(&input);
@@ -235,5 +237,5 @@ fn test_norm() {
     let input = arr2(&[[-4., -3., -2.],    
                [-1., 0., 1.],
                [2., 3., 4.]]);
-    assert_approx_eq!(norm(&input), 7.7459666_f32);
+    assert_approx_eq!(norm(&input), 7.7459666);
 }

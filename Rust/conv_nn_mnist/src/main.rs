@@ -94,7 +94,7 @@ fn generate_conv_input_array4(
         let t = rng.gen_range(0, mnist_records.len());
         let mut assign_mut = ret.slice_mut(s![i, 0, .., ..]);
         let record = &mnist_records[t];
-        assign_mut.assign(&record.dots_array);
+        assign_mut.assign(&record.dots_array.mapv(f64::from));
         answer_labels.push(record.label);
     }
     (ret, answer_labels)
@@ -104,7 +104,7 @@ fn mnist_to_nchw(mnist_record: &MnistRecord) -> Matrix {
     let mut ret: Array4<Elem> = Array4::<Elem>::zeros((1, 1, IMG_H_SIZE, IMG_W_SIZE));
     {
         let mut assign_mut = ret.slice_mut(s![0, 0, .., ..]);
-        assign_mut.assign(&mnist_record.dots_array);
+        assign_mut.assign(&mnist_record.dots_array.mapv(f64::from));
     }
     ret
 }
@@ -227,7 +227,7 @@ fn main() {
     }
     println!(
         "Test result: {} of {} test cases",
-        (test_correct_prediction as f32) / (test_count as f32),
+        (test_correct_prediction as Elem) / (test_count as Elem),
         test_count
     );
 }
