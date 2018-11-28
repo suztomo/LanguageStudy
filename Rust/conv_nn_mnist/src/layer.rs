@@ -1,4 +1,4 @@
-use ndarray_rand::{RandomExt, F32};
+use ndarray_rand::{RandomExt};
 use rand::distributions::Normal;
 // use rand::Rng;
 use ndarray::prelude::*;
@@ -16,8 +16,8 @@ lazy_static! {
     static ref INPUT_ARRAY2_ZERO: Array2<Elem> = Array::zeros((1, 1));
 }
 
-pub fn F64<T>(v: T) -> T {
-    v
+pub fn normal_distribution(mean: f64, stddev: f64) -> Normal {
+    Normal::new(mean, stddev)
 }
 
 // The implementaiton of the book leverages the layer-based implementation
@@ -92,7 +92,7 @@ impl<'a> Affine {
     }
 
     pub fn new(input_size: usize, hidden_size: usize) -> Affine {
-        let initial_weights = Array::random((input_size, hidden_size), F64(Normal::new(0., 1.)));
+        let initial_weights = Array::random((input_size, hidden_size), normal_distribution(0., 1.));
         Self::new_with(initial_weights)
     }
 
@@ -702,7 +702,7 @@ impl<'a> Convolution {
                     filter_height,
                     filter_width,
                 ),
-                F64(Normal::new(0., 1.)),
+                normal_distribution(0., 1.),
             ),
             d_weights: Array4::zeros((1, 1, 1, 1)),
             // The filter_num matches the number of channels in output feature map
@@ -810,7 +810,7 @@ impl<'a> Layer<'a> for Convolution {
 #[test]
 fn broadcast_assign_test() {
     let mut x = Array2::zeros((9, 3));
-    let y = Array::random(3, F64(Normal::new(0., 1.)));
+    let y = Array::random(3, normal_distribution(0., 1.));
     x.assign(&y);
     assert_eq!(x[[1, 1]], y[[1]]);
     // The below raises:
@@ -818,7 +818,7 @@ fn broadcast_assign_test() {
     // x.assign(&z);
 
     let mut x_3 = Array3::zeros((9, 3, 4));
-    let y_2 = Array::random((3, 4), F64(Normal::new(0., 1.)));
+    let y_2 = Array::random((3, 4), normal_distribution(0., 1.));
     // For each row, they're all same 3x4 matrix
     x_3.assign(&y_2);
     // below fails:
@@ -828,13 +828,13 @@ fn broadcast_assign_test() {
     // As long as the shape of last parts in suffix, it's broadcasted
     // E.g., (6, 7, 8, 9) assign (8, 9)
     //       (6, 7, 8, 9) assign (9)
-    x_3.assign(&Array::random(4, F64(Normal::new(0., 1.))));
+    x_3.assign(&Array::random(4, normal_distribution(0., 1.)));
 }
 
 #[test]
 fn slice_assign_test() {
     let mut x: Array3<Elem> = Array3::zeros((9, 3, 4));
-    let y = Array::random((9, 4), F64(Normal::new(0., 1.)));
+    let y = Array::random((9, 4), normal_distribution(0., 1.));
     x.slice_mut(s![.., 2, ..]).assign(&y);
     assert_eq!(x[[0, 0, 0]], 0.);
     assert_eq!(x[[0, 2, 0]], y[[0, 0]]);
@@ -845,16 +845,16 @@ fn slice_assign_test() {
 #[test]
 fn assign_test() {
     let mut x = Array4::zeros((9, 3, 100, 100));
-    let y = Array::random((9, 3, 100, 100), F64(Normal::new(0., 1.)));
+    let y = Array::random((9, 3, 100, 100), normal_distribution(0., 1.));
     x.assign(&y);
     assert_eq!(x[[1, 1, 1, 1]], y[[1, 1, 1, 1]]);
-    let z = Array::random((3, 100, 100), F64(Normal::new(0., 1.)));
+    let z = Array::random((3, 100, 100), normal_distribution(0., 1.));
     x.assign(&z);
     for i in 0..9 {
         assert_eq!(x[[i, 1, 1, 1]], z[[1, 1, 1]]);
     }
     /*
-    let m_100_100 = Array::random((100, 100), F64(Normal::new(0., 1.)));
+    let m_100_100 = Array::random((100, 100), normal_distribution(0., 1.));
     x.assign(&z);
     for i in 0..9 {
         assert_eq!(x[[i,1,1,1]], m_100_100[[1,1]]);
@@ -864,7 +864,7 @@ fn assign_test() {
 #[test]
 fn im2col_stride2_test() {
     // n_input, channel_count, input_height, input_width
-    let input = Array::random((100, 30, 28, 28), F64(Normal::new(0., 1.)));
+    let input = Array::random((100, 30, 28, 28), normal_distribution(0., 1.));
     let col2: Array2<Elem> = im2col(&input, 2, 2, 2, 0);
     assert_eq!(col2.shape(), [19600, 120]);
 }
@@ -878,17 +878,17 @@ fn im2col_shape_test() {
     */
 
     // n_input, channel_count, input_height, input_width
-    let input2 = Array::random((1, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input2 = Array::random((1, 3, 7, 7), normal_distribution(0., 1.));
     let col2: Array2<Elem> = im2col(&input2, 5, 5, 1, 0);
     assert_eq!(col2.shape(), [1 * 3 * 3, 5 * 5 * 3]);
-    let input3 = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input3 = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     let col3: Array2<Elem> = im2col(&input3, 5, 5, 1, 0);
     assert_eq!(col3.shape(), [10 * 3 * 3, 5 * 5 * 3]);
 }
 
 #[test]
 fn im2col_shape_pad_test() {
-    let input4 = Array::random((1, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input4 = Array::random((1, 3, 7, 7), normal_distribution(0., 1.));
     let col4: Array2<Elem> = im2col(&input4, 5, 5, 1, 2); // pad:2
                                                           // 7/5 -> 3
                                                           // 11/5 -> 7 This is out_h and out_w
@@ -897,7 +897,7 @@ fn im2col_shape_pad_test() {
 
 #[test]
 fn im2col_value_test() {
-    let input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     let a = input[[1, 2, 3, 4]];
     let input_at_0 = input[[0, 0, 0, 0]];
     let col: Array2<Elem> = im2col(&input, 5, 5, 1, 0);
@@ -909,7 +909,7 @@ fn im2col_value_test() {
 
 #[test]
 fn col2im_shape_test() {
-    let input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     let col: Array2<Elem> = im2col(&input, 5, 5, 1, 0);
     assert_eq!(col.shape(), &[10 * 3 * 3, 5 * 5 * 3]);
     let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 0);
@@ -917,7 +917,7 @@ fn col2im_shape_test() {
 }
 #[test]
 fn col2im_shape_pad_test() {
-    let input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     let col: Array2<Elem> = im2col(&input, 5, 5, 1, 2);
     let img_from_col = col2im(&col, &[10, 3, 7, 7], 5, 5, 1, 2);
     assert_eq!(img_from_col.shape(), &[10, 3, 7, 7]);
@@ -925,8 +925,8 @@ fn col2im_shape_pad_test() {
 
 #[test]
 fn convolution_forward_test() {
-    let input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
-    let dout = Array::random((10, 30, 3, 3), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
+    let dout = Array::random((10, 30, 3, 3), normal_distribution(0., 1.));
     let dim_mul = input.shape().iter().fold(1, |sum, val| sum * val);
     assert_eq!(dim_mul, 10 * 3 * 7 * 7);
     let mut convolution_layer = Convolution::new(10, 30, 3, 5, 5, 1, 0);
@@ -947,7 +947,7 @@ fn convolution_forward_test() {
 
 #[test]
 fn pooling_test() {
-    let input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     let mut pooling_layer = Pooling::new(3, 3, 1, 0);
     let out = pooling_layer.forward(&input);
     let dout = &out / 10.;
@@ -990,9 +990,9 @@ fn test_map_axis() {
 
 #[test]
 fn test_relu_array4() {
-    let mut input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let mut input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     input[[1, 2, 3, 4]] = -5.;
-    let dout = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let dout = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
 
     let mut relu_layer = Relu::<Ix4>::new();
     let r = relu_layer.forward(&input);
@@ -1008,9 +1008,9 @@ fn test_relu_array4() {
 
 #[test]
 fn test_relu_array2() {
-    let mut input = Array::random((10, 3), F64(Normal::new(0., 1.)));
+    let mut input = Array::random((10, 3), normal_distribution(0., 1.));
     input[[1, 2]] = -5.;
-    let dout = Array::random((10, 3), F64(Normal::new(0., 1.)));
+    let dout = Array::random((10, 3), normal_distribution(0., 1.));
 
     let mut relu_layer = Relu::<Ix2>::new();
     let r = relu_layer.forward(&input);
@@ -1021,9 +1021,9 @@ fn test_relu_array2() {
 
 #[test]
 fn test_affine() {
-    let mut input = Array::random((10, 3, 7, 7), F64(Normal::new(0., 1.)));
+    let mut input = Array::random((10, 3, 7, 7), normal_distribution(0., 1.));
     input[[1, 2, 3, 4]] = -5.;
-    let dout = Array::random((10, 100), F64(Normal::new(0., 1.)));
+    let dout = Array::random((10, 100), normal_distribution(0., 1.));
     let affine_input_size = 3 * 7 * 7;
     let mut layer = Affine::new(affine_input_size, 100);
     let r = layer.forward(&input);
@@ -1039,7 +1039,7 @@ fn test_affine() {
 
 #[test]
 fn test_softmax_with_loss() {
-    let input = Array::random((10, 3), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3), normal_distribution(0., 1.));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
     let output = softmax_with_loss_layer.forward(&input, &answer_array1);
@@ -1188,7 +1188,7 @@ fn test_cross_entropy_error_all_zero() {
 
 #[test]
 fn test_cross_entropy_error_random() {
-    let mut input = Array::random((5, 10), F64(Normal::new(0., 1.)));
+    let mut input = Array::random((5, 10), normal_distribution(0., 1.));
     let mut t = Array1::<usize>::zeros(5);
     for i in 0..5 {
         // For i-th batch, the answer is i
@@ -1226,7 +1226,7 @@ fn test_differentiation_softmax_with_loss_input_all_zero() {
 
 #[test]
 fn test_differentiation_softmax_with_loss() {
-    let mut input = Array::random((10, 3), F64(Normal::new(0., 1.)));
+    let mut input = Array::random((10, 3), normal_distribution(0., 1.));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
@@ -1242,7 +1242,7 @@ fn test_differentiation_softmax_with_loss() {
 fn test_differentiation_relu2() {
     let mut relu2_layer = Relu::<Ix2>::new();
     // mean 1. so that many of the data are positive
-    let mut input = Array::random((10, 3), F64(Normal::new(1., 1.)));
+    let mut input = Array::random((10, 3), normal_distribution(1., 1.));
     let input_copy = input.to_owned();
     let mut answer = Array2::<Elem>::zeros((10, 3));
     answer[[0, 0]] = 1.;
@@ -1283,7 +1283,7 @@ fn test_differentiation_relu2() {
 fn test_differentiation_relu4() {
     let mut relu_layer = Relu::<Ix4>::new();
     // mean 1. so that many of the data are positive
-    let mut input = Array::random((1, 1, 5, 5), F64(Normal::new(1., 1.)));
+    let mut input = Array::random((1, 1, 5, 5), normal_distribution(1., 1.));
     let input_copy = input.to_owned();
     let mut answer = Array4::<Elem>::zeros((1, 1, 5, 5));
     for i in 0..5 {
@@ -1317,7 +1317,7 @@ fn test_differentiation_relu4() {
 #[test]
 fn test_differentiation_affine_input_gradient() {
     let n_input = 10;
-    let mut input = Array::random((n_input, 1, 5, 5), F64(Normal::new(0., 1.)));
+    let mut input = Array::random((n_input, 1, 5, 5), normal_distribution(0., 1.));
     let affine_input_size = 1 * 5 * 5;
     let output_layer_size = 10;
     let mut layer = Affine::new(affine_input_size, output_layer_size);
@@ -1331,7 +1331,7 @@ fn test_differentiation_affine_input_gradient() {
     for i in 0..1000 {
         let output = layer.forward(&input);
         assert_eq!(output.shape(), [n_input, output_layer_size]);
-        let loss = softmax_with_loss_layer.forward(&output, &answer_array1);
+        let _loss = softmax_with_loss_layer.forward(&output, &answer_array1);
         let dout = softmax_with_loss_layer.backward(1.);
         let dx = layer.backward(&dout);
 
@@ -1346,7 +1346,7 @@ fn test_differentiation_affine_input_gradient() {
 #[test]
 fn test_differentiation_affine_weight_gradient() {
     let n_input = 10;
-    let input = Array::random((n_input, 1, 5, 5), F64(Normal::new(0., 1.)));
+    let input = Array::random((n_input, 1, 5, 5), normal_distribution(0., 1.));
     let affine_input_size = 1 * 5 * 5;
     let output_layer_size = 10;
     let mut layer = Affine::new(affine_input_size, output_layer_size);
@@ -1357,7 +1357,7 @@ fn test_differentiation_affine_weight_gradient() {
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    for i in 0..1000 {
+    for _i in 0..1000 {
         let output = layer.forward(&input);
         assert_eq!(output.shape(), [n_input, output_layer_size]);
         let loss = softmax_with_loss_layer.forward(&output, &answer_array1);
@@ -1378,7 +1378,7 @@ fn test_differentiation_affine_sample() {
     let n_input = 1;
     let mut input = Array4::zeros((n_input, 1, 2, 2));
     // Fix input randomness along with the initial weights of the network
-    // let mut input = Array::random((n_input, 1, 2, 2), F64(Normal::new(0., 1.)));
+    // let mut input = Array::random((n_input, 1, 2, 2), normal_distribution(0., 1.));
     //[[[[-0.45449638, 0.5611855],
     //    [0.5321661, 0.22618192]]]]
     input[[0, 0, 0, 0]] = -0.45449638;
@@ -1390,7 +1390,7 @@ fn test_differentiation_affine_sample() {
     let output_layer_size = 3;
     let mut layer = Affine::new(affine_input_size, output_layer_size);
 
-    let mut answer = Array::random((n_input, output_layer_size), F64(Normal::new(0., 1.)));
+    let mut answer = Array::random((n_input, output_layer_size), normal_distribution(0., 1.));
     answer[[0, 0]] = 0.;
     answer[[0, 1]] = 0.;
     answer[[0, 2]] = 1.;
@@ -1423,11 +1423,6 @@ fn test_differentiation_softmax_sample() {
 
     // one-hot vector: the value for the index of correct answer is high
     let mut input = Array2::zeros((n_input, 10));
-    // Fix input randomness along with the initial weights of the network
-    // They're almost zero
-    // let mut input = Array::random((n_input, 10), F64(Normal::new(0., 0.5)));
-    //[[[[-0.45449638, 0.5611855],
-    //    [0.5321661, 0.22618192]]]]
     // 3 inputs
     let answer_array1 = arr1(&[3, 0, 8]);
 
@@ -1451,7 +1446,7 @@ fn test_differentiation_softmax_sample() {
 
 #[test]
 fn test_reshape_4d_2d() {
-    let input = Array::random((10, 1, 5, 5), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 1, 5, 5), normal_distribution(0., 1.));
     let res_2d = reshape(input.view(), (10, 25));
     assert_eq!(res_2d.shape(), [10, 25]);
     let res_4d = reshape(res_2d.view(), (10, 1, 5, 5));
@@ -1461,14 +1456,14 @@ fn test_reshape_4d_2d() {
 
 #[test]
 fn test_reshape_4d_1d() {
-    let input = Array::random((10, 1, 5, 5), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 1, 5, 5), normal_distribution(0., 1.));
     let res_2d = reshape(input.view(), 0);
     assert_eq!(res_2d.shape(), [250]);
 }
 
 #[test]
 fn test_reshape_4d_2d_with_minus() {
-    let input = Array::random((10, 1, 5, 5), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 1, 5, 5), normal_distribution(0., 1.));
     let res_2d = reshape(input.view(), (10, 0));
     assert_eq!(res_2d.shape(), [10, 25]);
     let res_4d = reshape(res_2d.view(), (0, 1, 5, 5));

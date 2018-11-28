@@ -2,17 +2,13 @@ use ndarray::prelude::*;
 
 use ndarray::Dimension;
 use ndarray::IntoDimension;
-use ndarray::Ix;
 use ndarray::Zip;
 use ndarray::{arr2, arr3};
 use ndarray_rand::RandomExt;
-use num_traits::identities::Zero;
-use rand::distributions::Normal;
-use std::cmp::max;
 
 use layer::{
     argmax2d, reshape, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss,
-    F64,
+    normal_distribution
 };
 
 // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/gradient.py
@@ -35,7 +31,7 @@ where
     let mut ret = Array::<Elem, D>::zeros(x.raw_dim());
     let mut x = x.to_owned();
     let x_iter = x.to_owned();
-    for (p, i) in x_iter.indexed_iter() {
+    for (p, _i) in x_iter.indexed_iter() {
         let dim = p.into_dimension();
         let original_element: Elem = x[dim.clone()];
 
@@ -89,7 +85,7 @@ fn test_numerical_gradient_array3() {
             [10., 11., 12.],
         ],
     ]); //            /
-    let f = |x: ArrayView3<Elem>| -> Elem { 0.1 };
+    let f = |_x: ArrayView3<Elem>| -> Elem { 0.1 };
     let _ret = numerical_gradient_array(&ary, &f);
 }
 
@@ -98,7 +94,7 @@ fn test_numerical_gradient_different_h() {
     let mut softmax_with_loss_layer_numerical_gradient = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    let input = Array::random((10, 3), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 3), normal_distribution(0., 1.));
 
     let mut softmax_with_loss_layer_analytical_gradient = SoftmaxWithLoss::new();
     let _ = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
@@ -139,7 +135,7 @@ fn test_numerical_gradient_array2() {
     ]);
 
     let mut softmax_with_loss_layer_analytical_gradient = SoftmaxWithLoss::new();
-    let loss = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
+    let _loss = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
     // This shows 1.4896496958159746
     // Numpy shows 1.0325464866768228
     let analytical_gradient = softmax_with_loss_layer_analytical_gradient.backward(1.);
@@ -162,7 +158,7 @@ fn test_numerical_gradient_array2() {
 
 #[test]
 fn test_numerical_gradient_arraysum() {
-    let input = Array::random((5, 5), F64(Normal::new(0., 1.)));
+    let input = Array::random((5, 5), normal_distribution(0., 1.));
 
     let f = |x: ArrayView2<Elem>| -> Elem {
         let s = x.shape();
@@ -194,7 +190,7 @@ fn test_numerical_gradient_array4() {
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
-    let input = Array::random((10, 1, 5, 5), F64(Normal::new(0., 1.)));
+    let input = Array::random((10, 1, 5, 5), normal_distribution(0., 1.));
     let f = |x: ArrayView4<Elem>| -> Elem {
         let x2 = affine_layer.forward_view(x);
         let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
@@ -702,12 +698,44 @@ fn test_compare_numerical_gradient_affine4d() {
     assert_eq!(input4d.shape(), numerical_gradient.shape());
 
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    // The book's impleentation also showed 0.007982878499782674
+    // The book's implementation also showed 0.007982878499782674
     assert_approx_eq!(rel_error, 0., 0.01);
 }
 
+
 #[test]
-fn test_compare_numerical_gradient_affine() {
+fn test_compare_numerical_gradient_relu() {
+    let mut relu_layer = Relu::<Ix2>::new();
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let input = arr2(&[
+        [0.54041532, 0.80810253, -0.26378049],
+        [0.40096443, -0.52327029, 0.84360887],
+        [0.65346527, -0.16589569, -0.39340066],
+        [-0.37175547, 0.91136225, 0.06099962],
+    ]);
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
+
+    let relu_output = relu_layer.forward(&input);
+    let loss = softmax_with_loss_layer.forward(&relu_output, &answer_array1);
+    // This is same as Numpy
+    // println!("loss for input: {}", loss);
+    let dout = softmax_with_loss_layer.backward(1.);
+    let analytical_gradient = relu_layer.backward(&dout);
+
+    let numerical_gradient = numerical_gradient_array(&input, |x: ArrayView2<Elem>| -> Elem {
+        let x2 = relu_layer.forward(&x.to_owned());
+        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
+        loss
+    });
+    assert_eq!(input.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0.);
+}
+
+
+#[test]
+fn test_compare_numerical_gradient_affine_input() {
     let affine_weight = arr2(&[
         [0.48295846, -0.48263535, 1.51441368],
         [-0.20218527, -0.32934138, -1.06961015],
@@ -736,6 +764,41 @@ fn test_compare_numerical_gradient_affine() {
         loss
     });
     assert_eq!(input.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0.);
+}
+
+#[test]
+fn test_compare_numerical_gradient_affine_weights() {
+    let affine_weight = arr2(&[
+        [0.48295846, -0.48263535, 1.51441368],
+        [-0.20218527, -0.32934138, -1.06961015],
+        [0.43125413, 1.02735327, -1.27496537],
+    ]);
+    let mut affine_layer = Affine::new_with(affine_weight.to_owned());
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let input = arr2(&[
+        [0.54041532, 0.80810253, 0.26378049],
+        [0.40096443, 0.52327029, 0.84360887],
+        [0.65346527, 0.16589569, 0.39340066],
+        [0.37175547, 0.91136225, 0.06099962],
+    ]);
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
+
+    let affine_output = affine_layer.forward_2d(&input);
+    let _loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
+    let dout = softmax_with_loss_layer.backward(1.);
+    let _ = affine_layer.backward_2d(&dout);
+    let analytical_gradient = affine_layer.d_weights;
+
+    let numerical_gradient = numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
+        let mut affine_layer = Affine::new_with(weights.to_owned());
+        let x2 = affine_layer.forward_2d(&input);
+        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
+        loss
+    });
+    assert_eq!(affine_weight.shape(), numerical_gradient.shape());
 
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
     assert_approx_eq!(rel_error, 0.);

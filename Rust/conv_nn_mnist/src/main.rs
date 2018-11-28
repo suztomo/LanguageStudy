@@ -129,7 +129,7 @@ fn main() {
     let mut softmax_layer = SoftmaxWithLoss::new();
 
     let before_training = Instant::now();
-    let epoch = 1000;
+    let epoch = 300;
     let learning_rate = 0.1;
 
     // This needs to be in the for-loop. However, even when this is outside the loop,
