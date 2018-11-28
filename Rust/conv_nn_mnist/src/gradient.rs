@@ -54,6 +54,24 @@ where
     ret
 }
 
+fn norm(x: &Array2<Elem>) -> Elem {
+    let mut sum:Elem = 0.;
+    Zip::from(x)
+    .and(x)
+    .apply(|e1, e2| {
+        sum += e1 * e2;
+    });
+    sum.sqrt()
+}
+
+fn relative_error(x1: &Array2<Elem>, x2: &Array2<Elem>) -> Elem {
+    let norm_diff = norm(&(x1 - x2));
+    let norm_x1 = norm(x1);
+    let norm_x2 = norm(x2);
+    // http://cs231n.github.io/neural-networks-3/
+    norm_diff / (norm_x1.max(norm_x2))
+}
+
 #[test]
 fn test_numerical_gradient_array3() {
     // As this function knows the D=3, it works.
@@ -127,6 +145,8 @@ fn test_numerical_gradient_array2() {
         .apply(|a, b| {
             assert_approx_eq!(*a, *b, 0.05);
         });
+    // 0.3047206 (relative error) > 1e-2 (0.01) usually means the gradient is probably wrong
+    println!("relative error: {}", relative_error(&numerical_gradient, &analytical_gradient));
 }
 
 #[test]
@@ -189,14 +209,11 @@ fn test_compare_numerical_gradient_array4() {
     let dout = softmax_with_loss_layer.backward(1.);
     let analytical_gradient = affine_layer.backward(&dout);
 
-    let f = |x: ArrayView4<Elem>| -> Elem {
+    let numerical_gradient = numerical_gradient_array(&input, |x: ArrayView4<Elem>| -> Elem {
         let x2 = affine_layer.forward_view(x);
         let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
         loss
-    };
-
-
-    let numerical_gradient = numerical_gradient_array(&input, f);
+    });
     assert_eq!(input.shape(), numerical_gradient.shape());
 
     let mut max_diff: Elem = 0.;
@@ -209,4 +226,14 @@ fn test_compare_numerical_gradient_array4() {
         });
     // As of Nov 26th, max_diff: 0.19 - 0.32. Is this enough?
     println!("max_diff: {}", max_diff);
+}
+
+#[test]
+fn test_norm() {
+    // Frobenius norm
+    // https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.linalg.norm.html
+    let input = arr2(&[[-4., -3., -2.],    
+               [-1., 0., 1.],
+               [2., 3., 4.]]);
+    assert_approx_eq!(norm(&input), 7.7459666_f32);
 }

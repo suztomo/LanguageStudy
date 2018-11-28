@@ -238,7 +238,7 @@ impl<'a> Layer<'a> for Pooling {
         self.argmax = argmax2d(&reshaped_col, Axis(1));
 
         // out = np.max(col, axis=1)
-        let m = max2d(&reshaped_col.view(), Axis(1));
+        let m = max2d(reshaped_col.view(), Axis(1));
 
         // out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
         let reshaped_max = reshape(m.view(), (n_input, out_h, out_w, channel_count));
@@ -315,7 +315,6 @@ impl<'a> Layer<'a> for Pooling {
 pub struct SoftmaxWithLoss {
     y: Array2<Elem>,  // output
     t: Array1<usize>, // answers for each input
-    loss: Elem,
 }
 
 fn softmax_array2(x: ArrayView2<Elem>) -> Array2<Elem> {
@@ -326,9 +325,8 @@ fn softmax_array2(x: ArrayView2<Elem>) -> Array2<Elem> {
     //   [0.03, 0.02, 0.95] ]
 
     let x_t = x.t();
-    //  x = x - np.max(x, axis=0)
-    //        let m = reshaped_col.fold_axis(Axis(1), -1000000., |m, i| if *i < *m { *m } else { *i });
-    let x_max = max2d(&x_t.view(), Axis(0));
+    let x_max = max2d(x_t.view(), Axis(0));
+    // Because of this subtraction, the input is transposed.
     let x_diff_max = &x_t - &x_max;
     let x_exp = x_diff_max.mapv(|x| x.exp());
     let sum_x_exp = x_exp.sum_axis(Axis(0));
@@ -352,13 +350,13 @@ fn cross_entropy_error(y: &Array2<Elem>, answer_labels: &Array1<usize>) -> Elem 
     // It seems this calculates values of errors across batches
     // The first time to mix data across batches
 
-    let mut sum = 0.;
+    let mut sum:Elem = 0.;
     for i in 0..batch_size {
         // 0 - 9
         let answer_index = answer_labels[i];
         sum += (y[[i, answer_index]] + 1e-7).log2();
     }
-    -sum / (batch_size as f32)
+    -sum / (batch_size as Elem)
 }
 
 impl SoftmaxWithLoss {
@@ -366,7 +364,6 @@ impl SoftmaxWithLoss {
         let layer = SoftmaxWithLoss {
             y: Array::zeros((1, 1)),
             t: Array::zeros(1),
-            loss: 0.,
         };
         layer
     }
@@ -381,8 +378,7 @@ impl SoftmaxWithLoss {
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/functions.py#L31
         self.t = t.to_owned();
         self.y = softmax_array2(x);
-        self.loss = cross_entropy_error(&self.y, t);
-        self.loss
+        cross_entropy_error(&self.y, t)
     }
 
     pub fn backward(&mut self, _dout: Elem) -> Array2<Elem> {
@@ -396,7 +392,7 @@ impl SoftmaxWithLoss {
         for i in 0..batch_size {
             dx[[i, self.t[i]]] -= 1.;
         }
-        dx / (batch_size as f32)
+        dx / (batch_size as Elem)
     }
 }
 
@@ -821,7 +817,7 @@ fn broadcast_assign_test() {
 
 #[test]
 fn slice_assign_test() {
-    let mut x: Array3<f32> = Array3::zeros((9, 3, 4));
+    let mut x: Array3<Elem> = Array3::zeros((9, 3, 4));
     let y = Array::random((9, 4), F32(Normal::new(0., 1.)));
     x.slice_mut(s![.., 2, ..]).assign(&y);
     assert_eq!(x[[0, 0, 0]], 0.);
@@ -964,7 +960,7 @@ pub fn argmax2d(input: &Array2<Elem>, axis: Axis) -> Array1<usize> {
     out
 }
 
-pub fn max2d(input: &ArrayView2<Elem>, axis: Axis) -> Array1<Elem> {
+pub fn max2d(input: ArrayView2<Elem>, axis: Axis) -> Array1<Elem> {
     return input.fold_axis(axis, f32::MIN, |m, i| (*m).max(*i));
 }
 
@@ -1034,6 +1030,17 @@ fn test_softmax_with_loss() {
 
     let dx = softmax_with_loss_layer.backward(output);
     assert_eq!(dx.shape(), input.shape());
+
+    // The result of softmax should sum to one
+    let softmax_sum = softmax_with_loss_layer.y.sum_axis(Axis(1));
+    for i in 0..10 {
+        let mut s = 0.;
+        for j in 0..3 {
+            s += softmax_with_loss_layer.y[[i, j]];
+        }
+        assert_approx_eq!(s, 1.);
+        assert_approx_eq!(softmax_sum[[i]], 1.);
+    }
 }
 
 #[test]
@@ -1112,7 +1119,7 @@ fn test_max_array2() {
     input[[2, 2]] = 1.5;
     input[[1, 2]] = 1.4;
     input[[1, 3]] = 1.4;
-    let output = max2d(&input.view(), Axis(0));
+    let output = max2d(input.view(), Axis(0));
     assert_eq!(output, arr1(&[1.2, 1.3, 1.5, 1.4]));
 
     let mut input2 = Array2::zeros((3, 4));
@@ -1122,7 +1129,7 @@ fn test_max_array2() {
     input2[[0, 1]] = 1.;
     input2[[1, 2]] = 1.2;
     input2[[2, 3]] = 1.3;
-    let output = max2d(&input2.view(), Axis(1));
+    let output = max2d(input2.view(), Axis(1));
     assert_eq!(output, arr1(&[1.0, 1.2, 1.3]));
 }
 
@@ -1159,7 +1166,7 @@ fn test_cross_entropy_error_all_zero() {
         // Because cross_entropy_error gives the average across the batches
         // it gives the same number for 1-size batch to 10-size batch.
         // 1e-7 is a magic number to avoid infinity
-        assert_approx_eq!(ret, -(1e-7 as f32).log2());
+        assert_approx_eq!(ret, -(1e-7 as Elem).log2());
     }
 }
 
@@ -1409,22 +1416,22 @@ fn test_differentiation_softmax_sample() {
     // 3 inputs
     let answer_array1 = arr1(&[3, 0, 8]);
 
-    let learning_rate = 0.01;
+    // Having a bigger learning rate than 1 makes the final_output smaller.
+    // This means something worng with softmax_layer
+    let learning_rate = 5.;
     for _i in 0..1000 {
         let _output = softmax_layer.forward(&input, &answer_array1);
-
         // Somehow, the dout for the last layer is always 1.
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/ch07/simple_convnet.py#L129
         // It's because backward discards the argument.
         let dx = softmax_layer.backward(1.);
-
         // Is this appropriate to subtract dx from input? Yes, because
         // dx and dy are both positive.
         input -= &(dx * learning_rate);
     }
     let final_output = softmax_layer.forward(&input, &answer_array1);
 
-    assert!(final_output < 0.01, "The softmax layer should adjust the input via dx");
+    assert_approx_eq!(final_output, 0., 0.01);
 }
 
 #[test]
