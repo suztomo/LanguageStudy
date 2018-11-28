@@ -21,50 +21,49 @@ where
 {
     // As per test_numerical_gradient_array2_different_h, 0.0001 gives good result for
     // our softmax_with_loss function
-    numerical_gradient_array_h(x, f, 0.00001)
+    numerical_gradient_array_h(x, f, 0.0001)
 }
 
-fn numerical_gradient_array_h<D, F>(x: &Array<Elem, D>, mut f: F, h: Elem) -> Array<Elem, D>
+fn numerical_gradient_array_h<D, F>(x: &Array<Elem, D>, mut loss_f: F, h: f64) -> Array<Elem, D>
 where
-    F: FnMut(ArrayView<Elem, D>) -> Elem,
+    F: FnMut(ArrayView<Elem, D>) -> f64,
     D: Dimension,
 {
     let mut ret = Array::<Elem, D>::zeros(x.raw_dim());
     let mut x = x.to_owned();
     let x_iter = x.to_owned();
     for (p, i) in x_iter.indexed_iter() {
-        // When we cannot borrow x in the loop, what can we do with it?
-
-        // the trait `ndarray::NdIndex<D>` is not implemented for `<D as ndarray::Dimension>::Pattern
         let dim = p.into_dimension();
-        let original_element: Elem = *i;
+        let original_element: Elem = x[dim.clone()];
 
         x[dim.clone()] = original_element + h;
-        let fx_plus_h = f(x.view());
+        let fx_plus_h = loss_f(x.view());
 
         x[dim.clone()] = original_element - h;
-        let fx_minus_h = f(x.view());
+        let fx_minus_h = loss_f(x.view());
 
         x[dim.clone()] = original_element;
 
         let d = fx_plus_h - fx_minus_h;
-        let dx: Elem = d / (2. * h);
+        let dx = d / (2. * h);
         ret[dim] = dx;
     }
     ret
 }
 
-fn norm(x: &Array2<Elem>) -> Elem {
-    let mut sum:Elem = 0.;
+fn norm<D>(x: &Array<Elem, D>) -> f64
+where D: Dimension {
+    let mut sum:f64 = 0.;
     Zip::from(x)
     .and(x)
     .apply(|e1, e2| {
-        sum += e1 * e2;
+        sum += (e1 * e2) as f64;
     });
     sum.sqrt()
 }
 
-fn relative_error(x1: &Array2<Elem>, x2: &Array2<Elem>) -> Elem {
+fn relative_error<D>(x1: &Array<Elem, D>, x2: &Array<Elem, D>) -> f64
+where D: Dimension {
     let norm_diff = norm(&(x1 - x2));
     let norm_x1 = norm(x1);
     let norm_x2 = norm(x2);
@@ -90,7 +89,7 @@ fn test_numerical_gradient_array3() {
 }
 
 #[test]
-fn test_numerical_gradient_array2_different_h() {
+fn test_numerical_gradient_different_h() {
     let mut softmax_with_loss_layer_numerical_gradient = SoftmaxWithLoss::new();
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
 
@@ -126,29 +125,32 @@ fn test_numerical_gradient_array2_different_h() {
 #[test]
 fn test_numerical_gradient_array2() {
     let mut softmax_with_loss_layer_numerical_gradient = SoftmaxWithLoss::new();
-    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1, 1, 0, 1, 1, 2, 1]);
-
-    let input = Array::random((10, 3), F64(Normal::new(0., 1.)));
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
+    let input = arr2(&[[ 0.54041532, 0.80810253, 0.26378049],
+        [ 0.40096443, 0.52327029, 0.84360887],
+        [ 0.65346527, 0.16589569, 0.39340066],
+        [ 0.37175547, 0.91136225, 0.06099962]]);
 
     let mut softmax_with_loss_layer_analytical_gradient = SoftmaxWithLoss::new();
-    let _ = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
+    let loss = softmax_with_loss_layer_analytical_gradient.forward(&input, &answer_array1);
+    // This shows 1.4896496958159746
+    // Numpy shows 1.0325464866768228
     let analytical_gradient = softmax_with_loss_layer_analytical_gradient.backward(1.);
-
     let f = |x: ArrayView2<Elem>| -> Elem {
         let loss = softmax_with_loss_layer_numerical_gradient.forward_view(x, &answer_array1);
         loss
     };
     let numerical_gradient = numerical_gradient_array(&input, f);
+    
+    // 0.3047206 (relative error) > 1e-2 (0.01) usually means the gradient is probably wrong
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0., 0.000001);
 
     Zip::from(&numerical_gradient)
         .and(&analytical_gradient)
         .apply(|a, b| {
-            assert_approx_eq!(*a, *b, 0.05);
+            assert_approx_eq!(*a, *b);
         });
-    // 0.3047206 (relative error) > 1e-2 (0.01) usually means the gradient is probably wrong
-    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    println!("relative error: {}", rel_error);
-    assert_approx_eq!(rel_error, 0., 0.01);
 }
 
 #[test]
@@ -175,7 +177,6 @@ fn test_numerical_gradient_arraysum() {
         Zip::from(&numerical_gradient).apply(|a| {
             max_diff = max_diff.max((a - 1.).abs());
         });
-        println!("h: {}, maximum diff: {}", h, max_diff);
     }
 }
 
@@ -218,16 +219,8 @@ fn test_compare_numerical_gradient_array4() {
     });
     assert_eq!(input.shape(), numerical_gradient.shape());
 
-    let mut max_diff: Elem = 0.;
-
-    Zip::from(&numerical_gradient)
-        .and(&analytical_gradient)
-        .apply(|a, b| {
-            max_diff = max_diff.max((*a - *b).abs());
-//            assert_approx_eq!(*a, *b, 0.05);
-        });
-    // As of Nov 26th, max_diff: 0.19 - 0.32. Is this enough?
-    println!("max_diff: {}", max_diff);
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0., 0.1);
 }
 
 #[test]
@@ -237,5 +230,12 @@ fn test_norm() {
     let input = arr2(&[[-4., -3., -2.],    
                [-1., 0., 1.],
                [2., 3., 4.]]);
-    assert_approx_eq!(norm(&input), 7.7459666);
+    assert_eq!(norm(&input), 7.745966692414834_f64);
+
+    let input = arr2(&[[ 0.54041532, 0.80810253, 0.26378049],
+        [ 0.40096443, 0.52327029, 0.84360887],
+        [ 0.65346527, 0.16589569, 0.39340066],
+        [ 0.37175547, 0.91136225, 0.06099962]]);
+    // Numpy shows 1.93461244497
+    assert_approx_eq!(norm(&input), 1.93461244497_f64);
 }

@@ -316,7 +316,7 @@ impl<'a> Layer<'a> for Pooling {
 
 #[derive(Debug)]
 pub struct SoftmaxWithLoss {
-    y: Array2<Elem>,  // output
+    pub y: Array2<Elem>,  // output
     t: Array1<usize>, // answers for each input
 }
 
@@ -357,7 +357,11 @@ fn cross_entropy_error(y: &Array2<Elem>, answer_labels: &Array1<usize>) -> Elem 
     for i in 0..batch_size {
         // 0 - 9
         let answer_index = answer_labels[i];
-        sum += (y[[i, answer_index]] + 1e-7).log2();
+        let before_log = y[[i, answer_index]] + 1e-7;
+        // natural logarithm: log(e). Before Nov. 28th, it was using log2
+        // and caused big error
+        let y_log = (before_log).ln();
+        sum += y_log;
     }
     -sum / (batch_size as Elem)
 }
@@ -374,7 +378,8 @@ impl SoftmaxWithLoss {
         self.forward_view(x.view(), t)
     }
     pub fn forward_view(&mut self, x: ArrayView2<Elem>, t: &Array1<usize>) -> Elem {
-        debug_assert_eq!(x.shape()[0], t.shape()[0]);
+        debug_assert_eq!(x.shape()[0], t.shape()[0],
+        "The batch size of x and target does not match");
         // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py#L70
 
         // What's softmax for 2 dimensional array?
@@ -1172,7 +1177,7 @@ fn test_cross_entropy_error_all_zero() {
         // Because cross_entropy_error gives the average across the batches
         // it gives the same number for 1-size batch to 10-size batch.
         // 1e-7 is a magic number to avoid infinity
-        assert_approx_eq!(ret, -(1e-7 as Elem).log2());
+        assert_approx_eq!(ret, -(1e-7 as Elem).ln());
     }
 }
 
@@ -1211,7 +1216,7 @@ fn test_differentiation_softmax_with_loss_input_all_zero() {
     let answer_array1 = Array1::from_vec(vec![0, 1, 2]);
 
     let output = softmax_with_loss_layer.forward(&input, &answer_array1);
-    assert_approx_eq!(output, 3.3219, 0.001);
+    assert_approx_eq!(output, 2.30258409, 0.001);
 }
 
 #[test]
