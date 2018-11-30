@@ -5,11 +5,15 @@ use ndarray::IntoDimension;
 use ndarray::Zip;
 use ndarray::{arr2, arr3};
 use ndarray_rand::RandomExt;
+use std::fmt::Debug;
 
 use layer::{
     argmax2d, reshape, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss,
-    normal_distribution
+    normal_distribution, mnist_to_nchw
 };
+
+use network::{Network, SimpleConv};
+
 
 // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/gradient.py
 
@@ -45,6 +49,7 @@ where
 
         let d = fx_plus_h - fx_minus_h;
         let dx = d / (2. * h);
+        println!("ret {:?} -> {}", dim, dx);
         ret[dim] = dx;
     }
     ret
@@ -201,125 +206,273 @@ fn test_numerical_gradient_array4() {
     assert_eq!(input.shape(), ret.shape());
 }
 
+fn random_shape<E>(shape: E) -> Array<Elem, E::Dim>
+where    E: IntoDimension + Debug,
+{
+    Array::random(shape, normal_distribution(0., 1.))
+}
+
 #[test]
-fn test_compare_numerical_gradient_affine4d() {
-    // (3*4*3)x3
-    let affine_weight1d = arr1(&[
-        -0.13899047254379013,
-        -0.04484669902999548,
-        1.1791242378353926,
-        1.1373129253401544,
-        -0.49421092004078926,
-        1.963437342680638,
-        0.03315691583223826,
-        -0.2669480834489957,
-        -0.5089712807737902,
-        -0.25112228867056197,
-        -0.11910232919103347,
-        -0.19139711935108453,
-        -0.40362906873396887,
-        0.8612378285956889,
-        -0.9820136493251618,
-        -1.0989115558250913,
-        -0.7788820958545758,
-        -0.77659359734107,
-        -0.6495082122277791,
-        0.3343767287782776,
-        -0.14222365142061363,
-        -1.1910168088684714,
-        -0.9987238755580539,
-        0.7183142764925267,
-        1.6997156241328726,
-        -1.6549045935212976,
-        0.5800260118904768,
-        1.6107718484775069,
-        -0.8604118548234098,
-        -0.5898844018527126,
-        0.37043280402706885,
-        0.04741073150993697,
-        1.6435502171313152,
-        -1.3965025371267301,
-        -0.30711741845463936,
-        1.5141922385301614,
-        0.632787852594581,
-        0.2123690763655377,
-        -0.683545526745689,
-        -0.6450075581689615,
-        0.2292011587356229,
-        -1.1344560385269034,
-        -1.1657216942748925,
-        0.15151809586744677,
-        -1.8410268125860585,
-        0.7187648555429704,
-        0.0581410923312437,
-        0.37879536501694466,
-        -0.9252993432189356,
-        -1.669094998544574,
-        0.6671091148268499,
-        -1.2805461955777804,
-        1.2727827032874064,
-        0.43759940777156553,
-        1.0235187426516597,
-        1.0150969451511962,
-        -1.104670851592963,
-        1.266119412974307,
-        -0.3572996624200624,
-        -0.03109295059624584,
-        0.4566064341584749,
-        -0.5336481485491357,
-        -0.0009675482937283285,
-        -0.5787345297134922,
-        1.0938225246307314,
-        -0.15384131021351954,
-        1.1756734637293578,
-        1.0354868325823132,
-        -0.43015244248803947,
-        1.6479956416208885,
-        0.14160161456475526,
-        -0.38516066535797555,
-        -0.8150943700184908,
-        -0.5700073001403277,
-        -1.5502940228202144,
-        -0.06976847278972663,
-        0.21475709193548762,
-        0.7817065167326556,
-        -0.18937346269303112,
-        0.2113972360214565,
-        -1.840500224298503,
-        0.06992167409460756,
-        0.6553899645224592,
-        0.1458219261575918,
-        -1.1581548352144422,
-        -0.07660491313937506,
-        0.20153192601379635,
-        0.2604083876968991,
-        0.10406486678391588,
-        -0.6343190877089048,
-        1.625588250491475,
-        0.6170385822117495,
-        0.9190680094174852,
-        1.6577205652304778,
-        0.04124981711728155,
-        1.4116445973098508,
-        1.2404821613963477,
-        0.23465897624078377,
-        1.6111701835545915,
-        -0.5916421585081517,
-        -0.4255489574843975,
-        0.11537951507260767,
-        -0.5215974731011331,
-        1.977115479604823,
-        1.138270182546514,
-        1.1514669751639885,
-        -0.20730389871746288,
-        0.6421350563484785,
-    ]);
-    let affine_weight = reshape(affine_weight1d.view(), (3 * 4 * 3, 3));
+fn test_gradient_check_simple_convnet() {
+    let batch_size =1;
+    // This may need to adjust affine layer input size
+    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10));
+
+    // 10x3x4x3
+    let input4d = random_shape((batch_size, 1, 10, 10));
+    let answers = vec![1];
+
+    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+    let analytical_gradient = simple_convnet.backward_path();
+    let numerical_gradient = numerical_gradient_array(&input4d, |x: ArrayView4<Elem>| -> Elem {
+        let l = simple_convnet.forward_path(x.to_owned(), answers.to_owned());
+        println!("loss :{}", l);
+        l
+    });
+
+    println!("a {:?}", analytical_gradient);
+
+    println!("n {:?}", numerical_gradient);
+   
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+}
+
+#[test]
+fn test_compare_numerical_gradient_convolution_input() {
+    let padding = 0;
+    let batch_size = 10;
+
+    // 10x3x4x3
+    let input4d = random_shape((batch_size, 1, 5, 5));
+
+    let mut convolution_layer = Convolution::new(batch_size, 4, 1, 3, 3, 1, padding);
+
+    let affine_weight = random_shape((36, 10));
     let mut affine_layer = Affine::new_with(affine_weight);
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
 
+    
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
+    assert_eq!(answer_array1.shape()[0], batch_size);
+
+    // 3 places to add layer
+    let convolution_output = convolution_layer.forward(&input4d);
+    let affine_output = affine_layer.forward(&convolution_output);
+    let loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
+    let dx_loss = softmax_with_loss_layer.backward(1.);
+    let dx_affine = affine_layer.backward(&dx_loss);
+    let analytical_gradient = convolution_layer.backward(&dx_affine);
+
+    let numerical_gradient = numerical_gradient_array(&input4d, |x: ArrayView4<Elem>| -> Elem {
+        let x1 = convolution_layer.forward(&x.to_owned());
+        let x2 = affine_layer.forward(&x1);
+        let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
+        loss
+    });
+    println!("finished numerical gradient");
+    assert_eq!(input4d.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    // 0.811 with conv - affine - softmax_loss
+    // assert_approx_eq!(rel_error, 0.);
+}
+
+#[test]
+fn test_compare_numerical_gradient_affine4d_input() {
+    // (3*4*3)x3
+    let affine_weight1d = weight1d_108();
+    let affine_weight = reshape(affine_weight1d.view(), (3 * 4 * 3, 3));
+    let mut affine_layer = Affine::new_with(affine_weight);
+    // Adding relu helps to reduce relative error
+    let mut relu_layer = Relu::<Ix2>::new();
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+
     // 10x3x4x3
-    let input1d = Array::from_vec(vec![
+    let input1d = input1d_360();
+    
+    let input4d = reshape(input1d.view(), (10, 3, 4, 3));
+
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
+
+    let affine_output = affine_layer.forward(&input4d);
+    let relu_output = relu_layer.forward(&affine_output);
+    let _loss = softmax_with_loss_layer.forward(&relu_output, &answer_array1);
+
+    let dx_softmax = softmax_with_loss_layer.backward(1.);
+    let dx_relu = relu_layer.backward(&dx_softmax);
+    let analytical_gradient = affine_layer.backward(&dx_relu);
+
+    let numerical_gradient = numerical_gradient_array(&input4d, |x: ArrayView4<Elem>| -> Elem {
+        let x1 = affine_layer.forward_view(x);
+        let x2 = relu_layer.forward(&x1);
+        let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
+        loss
+    });
+    assert_eq!(input4d.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    // 0.00006666536121665446
+    assert_approx_eq!(rel_error, 0., 0.0001);
+}
+
+
+#[test]
+fn test_compare_numerical_gradient_affine4d_weights() {
+    // (3*4*3)x3
+    let affine_weight1d = weight1d_108();
+    let affine_weight = reshape(affine_weight1d.view(), (3 * 4 * 3, 3));
+    let mut affine_layer = Affine::new_with(affine_weight.to_owned());
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+
+    // 10x3x4x3
+    let input1d = input1d_360();
+    
+    let input4d = reshape(input1d.view(), (10, 3, 4, 3));
+
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
+
+    let affine_output = affine_layer.forward(&input4d);
+    let _loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
+    let dout = softmax_with_loss_layer.backward(1.);
+    let _ = affine_layer.backward(&dout);
+    let analytical_gradient = affine_layer.d_weights;
+
+    let numerical_gradient = numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
+        let mut affine_layer = Affine::new_with(weights.to_owned());
+        let x2 = affine_layer.forward(&input4d);
+        let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
+        loss
+    });
+    assert_eq!(affine_weight.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    // 0.00816917
+    assert_approx_eq!(rel_error, 0., 0.01);
+}
+
+
+#[test]
+fn test_compare_numerical_gradient_relu() {
+    let mut relu_layer = Relu::<Ix2>::new();
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let input = arr2(&[
+        [0.54041532, 0.80810253, -0.26378049],
+        [0.40096443, -0.52327029, 0.84360887],
+        [0.65346527, -0.16589569, -0.39340066],
+        [-0.37175547, 0.91136225, 0.06099962],
+    ]);
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
+
+    let relu_output = relu_layer.forward(&input);
+    let loss = softmax_with_loss_layer.forward(&relu_output, &answer_array1);
+    // This is same as Numpy
+    // println!("loss for input: {}", loss);
+    let dout = softmax_with_loss_layer.backward(1.);
+    let analytical_gradient = relu_layer.backward(&dout);
+
+    let numerical_gradient = numerical_gradient_array(&input, |x: ArrayView2<Elem>| -> Elem {
+        let x2 = relu_layer.forward(&x.to_owned());
+        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
+        loss
+    });
+    assert_eq!(input.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0.);
+}
+
+
+#[test]
+fn test_compare_numerical_gradient_affine_input() {
+    let affine_weight = arr2(&[
+        [0.48295846, -0.48263535, 1.51441368],
+        [-0.20218527, -0.32934138, -1.06961015],
+        [0.43125413, 1.02735327, -1.27496537],
+    ]);
+    let mut affine_layer = Affine::new_with(affine_weight);
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let input = arr2(&[
+        [0.54041532, 0.80810253, 0.26378049],
+        [0.40096443, 0.52327029, 0.84360887],
+        [0.65346527, 0.16589569, 0.39340066],
+        [0.37175547, 0.91136225, 0.06099962],
+    ]);
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
+
+    let affine_output = affine_layer.forward_2d(&input);
+    let loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
+    // This is same as Numpy
+    println!("loss for input: {}", loss);
+    let dout = softmax_with_loss_layer.backward(1.);
+    let analytical_gradient = affine_layer.backward_2d(&dout);
+
+    let numerical_gradient = numerical_gradient_array(&input, |x: ArrayView2<Elem>| -> Elem {
+        let x2 = affine_layer.forward_2d(&x.to_owned());
+        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
+        loss
+    });
+    assert_eq!(input.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0.);
+}
+
+#[test]
+fn test_compare_numerical_gradient_affine_weights() {
+    let affine_weight = arr2(&[
+        [0.48295846, -0.48263535, 1.51441368],
+        [-0.20218527, -0.32934138, -1.06961015],
+        [0.43125413, 1.02735327, -1.27496537],
+    ]);
+    let mut affine_layer = Affine::new_with(affine_weight.to_owned());
+    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
+    let input = arr2(&[
+        [0.54041532, 0.80810253, 0.26378049],
+        [0.40096443, 0.52327029, 0.84360887],
+        [0.65346527, 0.16589569, 0.39340066],
+        [0.37175547, 0.91136225, 0.06099962],
+    ]);
+    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
+
+    let affine_output = affine_layer.forward_2d(&input);
+    let _loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
+    let dout = softmax_with_loss_layer.backward(1.);
+    let _ = affine_layer.backward_2d(&dout);
+    let analytical_gradient = affine_layer.d_weights;
+
+    let numerical_gradient = numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
+        let mut affine_layer = Affine::new_with(weights.to_owned());
+        let x2 = affine_layer.forward_2d(&input);
+        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
+        loss
+    });
+    assert_eq!(affine_weight.shape(), numerical_gradient.shape());
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    assert_approx_eq!(rel_error, 0.);
+}
+
+#[test]
+fn test_norm() {
+    // Frobenius norm
+    // https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.linalg.norm.html
+    let input = arr2(&[[-4., -3., -2.], [-1., 0., 1.], [2., 3., 4.]]);
+    assert_eq!(norm(&input), 7.745966692414834_f64);
+
+    let input = arr2(&[
+        [0.54041532, 0.80810253, 0.26378049],
+        [0.40096443, 0.52327029, 0.84360887],
+        [0.65346527, 0.16589569, 0.39340066],
+        [0.37175547, 0.91136225, 0.06099962],
+    ]);
+    // Numpy shows 1.93461244497
+    assert_approx_eq!(norm(&input), 1.93461244497_f64);
+}
+
+
+fn input1d_360()-> Array1<f64> {
+        Array::from_vec(vec![
         -0.009348636775035203,
         0.261872431435286,
         -0.0414835901957502,
@@ -680,143 +833,118 @@ fn test_compare_numerical_gradient_affine4d() {
         -0.7131596073905848,
         0.44078985920327207,
         -0.6860375138020224,
-    ]);
-    let input4d = reshape(input1d.view(), (10, 3, 4, 3));
-
-    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
-
-    let affine_output = affine_layer.forward(&input4d);
-    let loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
-    let dout = softmax_with_loss_layer.backward(1.);
-    let analytical_gradient = affine_layer.backward(&dout);
-
-    let numerical_gradient = numerical_gradient_array(&input4d, |x: ArrayView4<Elem>| -> Elem {
-        let x2 = affine_layer.forward_view(x);
-        let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
-        loss
-    });
-    assert_eq!(input4d.shape(), numerical_gradient.shape());
-
-    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    // The book's implementation also showed 0.007982878499782674
-    assert_approx_eq!(rel_error, 0., 0.01);
+    ])
 }
 
-
-#[test]
-fn test_compare_numerical_gradient_relu() {
-    let mut relu_layer = Relu::<Ix2>::new();
-    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
-    let input = arr2(&[
-        [0.54041532, 0.80810253, -0.26378049],
-        [0.40096443, -0.52327029, 0.84360887],
-        [0.65346527, -0.16589569, -0.39340066],
-        [-0.37175547, 0.91136225, 0.06099962],
-    ]);
-    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
-
-    let relu_output = relu_layer.forward(&input);
-    let loss = softmax_with_loss_layer.forward(&relu_output, &answer_array1);
-    // This is same as Numpy
-    // println!("loss for input: {}", loss);
-    let dout = softmax_with_loss_layer.backward(1.);
-    let analytical_gradient = relu_layer.backward(&dout);
-
-    let numerical_gradient = numerical_gradient_array(&input, |x: ArrayView2<Elem>| -> Elem {
-        let x2 = relu_layer.forward(&x.to_owned());
-        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
-        loss
-    });
-    assert_eq!(input.shape(), numerical_gradient.shape());
-
-    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    assert_approx_eq!(rel_error, 0.);
-}
-
-
-#[test]
-fn test_compare_numerical_gradient_affine_input() {
-    let affine_weight = arr2(&[
-        [0.48295846, -0.48263535, 1.51441368],
-        [-0.20218527, -0.32934138, -1.06961015],
-        [0.43125413, 1.02735327, -1.27496537],
-    ]);
-    let mut affine_layer = Affine::new_with(affine_weight);
-    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
-    let input = arr2(&[
-        [0.54041532, 0.80810253, 0.26378049],
-        [0.40096443, 0.52327029, 0.84360887],
-        [0.65346527, 0.16589569, 0.39340066],
-        [0.37175547, 0.91136225, 0.06099962],
-    ]);
-    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
-
-    let affine_output = affine_layer.forward_2d(&input);
-    let loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
-    // This is same as Numpy
-    println!("loss for input: {}", loss);
-    let dout = softmax_with_loss_layer.backward(1.);
-    let analytical_gradient = affine_layer.backward_2d(&dout);
-
-    let numerical_gradient = numerical_gradient_array(&input, |x: ArrayView2<Elem>| -> Elem {
-        let x2 = affine_layer.forward_2d(&x.to_owned());
-        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
-        loss
-    });
-    assert_eq!(input.shape(), numerical_gradient.shape());
-
-    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    assert_approx_eq!(rel_error, 0.);
-}
-
-#[test]
-fn test_compare_numerical_gradient_affine_weights() {
-    let affine_weight = arr2(&[
-        [0.48295846, -0.48263535, 1.51441368],
-        [-0.20218527, -0.32934138, -1.06961015],
-        [0.43125413, 1.02735327, -1.27496537],
-    ]);
-    let mut affine_layer = Affine::new_with(affine_weight.to_owned());
-    let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
-    let input = arr2(&[
-        [0.54041532, 0.80810253, 0.26378049],
-        [0.40096443, 0.52327029, 0.84360887],
-        [0.65346527, 0.16589569, 0.39340066],
-        [0.37175547, 0.91136225, 0.06099962],
-    ]);
-    let answer_array1 = Array1::from_vec(vec![0, 1, 2, 1]);
-
-    let affine_output = affine_layer.forward_2d(&input);
-    let _loss = softmax_with_loss_layer.forward(&affine_output, &answer_array1);
-    let dout = softmax_with_loss_layer.backward(1.);
-    let _ = affine_layer.backward_2d(&dout);
-    let analytical_gradient = affine_layer.d_weights;
-
-    let numerical_gradient = numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
-        let mut affine_layer = Affine::new_with(weights.to_owned());
-        let x2 = affine_layer.forward_2d(&input);
-        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
-        loss
-    });
-    assert_eq!(affine_weight.shape(), numerical_gradient.shape());
-
-    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    assert_approx_eq!(rel_error, 0.);
-}
-
-#[test]
-fn test_norm() {
-    // Frobenius norm
-    // https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.linalg.norm.html
-    let input = arr2(&[[-4., -3., -2.], [-1., 0., 1.], [2., 3., 4.]]);
-    assert_eq!(norm(&input), 7.745966692414834_f64);
-
-    let input = arr2(&[
-        [0.54041532, 0.80810253, 0.26378049],
-        [0.40096443, 0.52327029, 0.84360887],
-        [0.65346527, 0.16589569, 0.39340066],
-        [0.37175547, 0.91136225, 0.06099962],
-    ]);
-    // Numpy shows 1.93461244497
-    assert_approx_eq!(norm(&input), 1.93461244497_f64);
+fn weight1d_108() -> Array1<f64> {
+        arr1(&[
+        -0.13899047254379013,
+        -0.04484669902999548,
+        1.1791242378353926,
+        1.1373129253401544,
+        -0.49421092004078926,
+        1.963437342680638,
+        0.03315691583223826,
+        -0.2669480834489957,
+        -0.5089712807737902,
+        -0.25112228867056197,
+        -0.11910232919103347,
+        -0.19139711935108453,
+        -0.40362906873396887,
+        0.8612378285956889,
+        -0.9820136493251618,
+        -1.0989115558250913,
+        -0.7788820958545758,
+        -0.77659359734107,
+        -0.6495082122277791,
+        0.3343767287782776,
+        -0.14222365142061363,
+        -1.1910168088684714,
+        -0.9987238755580539,
+        0.7183142764925267,
+        1.6997156241328726,
+        -1.6549045935212976,
+        0.5800260118904768,
+        1.6107718484775069,
+        -0.8604118548234098,
+        -0.5898844018527126,
+        0.37043280402706885,
+        0.04741073150993697,
+        1.6435502171313152,
+        -1.3965025371267301,
+        -0.30711741845463936,
+        1.5141922385301614,
+        0.632787852594581,
+        0.2123690763655377,
+        -0.683545526745689,
+        -0.6450075581689615,
+        0.2292011587356229,
+        -1.1344560385269034,
+        -1.1657216942748925,
+        0.15151809586744677,
+        -1.8410268125860585,
+        0.7187648555429704,
+        0.0581410923312437,
+        0.37879536501694466,
+        -0.9252993432189356,
+        -1.669094998544574,
+        0.6671091148268499,
+        -1.2805461955777804,
+        1.2727827032874064,
+        0.43759940777156553,
+        1.0235187426516597,
+        1.0150969451511962,
+        -1.104670851592963,
+        1.266119412974307,
+        -0.3572996624200624,
+        -0.03109295059624584,
+        0.4566064341584749,
+        -0.5336481485491357,
+        -0.0009675482937283285,
+        -0.5787345297134922,
+        1.0938225246307314,
+        -0.15384131021351954,
+        1.1756734637293578,
+        1.0354868325823132,
+        -0.43015244248803947,
+        1.6479956416208885,
+        0.14160161456475526,
+        -0.38516066535797555,
+        -0.8150943700184908,
+        -0.5700073001403277,
+        -1.5502940228202144,
+        -0.06976847278972663,
+        0.21475709193548762,
+        0.7817065167326556,
+        -0.18937346269303112,
+        0.2113972360214565,
+        -1.840500224298503,
+        0.06992167409460756,
+        0.6553899645224592,
+        0.1458219261575918,
+        -1.1581548352144422,
+        -0.07660491313937506,
+        0.20153192601379635,
+        0.2604083876968991,
+        0.10406486678391588,
+        -0.6343190877089048,
+        1.625588250491475,
+        0.6170385822117495,
+        0.9190680094174852,
+        1.6577205652304778,
+        0.04124981711728155,
+        1.4116445973098508,
+        1.2404821613963477,
+        0.23465897624078377,
+        1.6111701835545915,
+        -0.5916421585081517,
+        -0.4255489574843975,
+        0.11537951507260767,
+        -0.5215974731011331,
+        1.977115479604823,
+        1.138270182546514,
+        1.1514669751639885,
+        -0.20730389871746288,
+        0.6421350563484785,
+    ])
 }

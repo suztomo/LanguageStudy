@@ -10,6 +10,7 @@ use std::cmp::min;
 use std::f32;
 use std::f64;
 use std::fmt::Debug;
+use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE, Label};
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
@@ -44,6 +45,8 @@ pub fn normal_distribution(mean: f64, stddev: f64) -> Normal {
 //        out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
 
 pub type Elem = f64;
+pub type Loss = f64;
+
 // Following the book's interface of having 4-dimensional array as input of each layer
 pub type Matrix = Array4<Elem>;
 // pub type MatrixView = ArrayView4<Elem>;
@@ -52,6 +55,15 @@ pub type Matrix = Array4<Elem>;
 pub trait Layer<'a> {
     fn forward(&mut self, x: &'a Matrix) -> Matrix;
     fn backward(&mut self, dout: &'a Matrix) -> Matrix;
+}
+
+pub fn mnist_to_nchw(mnist_record: &MnistRecord) -> Matrix {
+    let mut ret: Array4<Elem> = Array4::<Elem>::zeros((1, 1, IMG_H_SIZE, IMG_W_SIZE));
+    {
+        let mut assign_mut = ret.slice_mut(s![0, 0, .., ..]);
+        assign_mut.assign(&mnist_record.dots_array.mapv(f64::from));
+    }
+    ret
 }
 
 #[derive(Debug)]
@@ -223,6 +235,11 @@ impl<'a> Pooling {
         };
         pooling
     }
+
+    pub fn output_size(&self, input_height: usize, input_width: usize) -> (usize, usize) {
+        (1 + (input_height - self.pool_h) / self.stride,
+        1 + (input_width - self.pool_w) / self.stride)
+    }
 }
 
 impl<'a> Layer<'a> for Pooling {
@@ -230,8 +247,9 @@ impl<'a> Layer<'a> for Pooling {
     fn forward(&mut self, x: &'a Matrix) -> Matrix {
         self.last_input = x.to_owned();
         let (n_input, channel_count, input_height, input_width) = x.dim();
-        let out_h = 1 + (input_height - self.pool_h) / self.stride;
-        let out_w = 1 + (input_width - self.pool_w) / self.stride;
+        let (out_h, out_w) = self.output_size(input_height, input_width);
+        //let out_h = 1 + (input_height - self.pool_h) / self.stride;
+        //let out_w = 1 + (input_width - self.pool_w) / self.stride;
         //        println!("input_height: {}, self.pool_h: {}, self.stride: {}", input_height, self.pool_h, self.stride);
         //        println!("input_width: {}, self.pool_w: {}, self.stride: {}", input_width, self.pool_w, self.stride);
         //        println!("x.shape: {:?}, pool_h: {}, pool_w: {}, stride: {}, pad: {}", x.shape(),
@@ -711,6 +729,12 @@ impl<'a> Convolution {
         };
         conv
     }
+
+    pub fn output_size(&self, input_height: usize, input_width: usize) -> (usize, usize) {
+        let (_, _, filter_height, filter_width) = self.weights.dim();
+        (1 + (input_height + 2 * self.pad - filter_height) / self.stride,
+        1 + (input_width + 2 * self.pad - filter_width) / self.stride)
+    }
 }
 
 impl<'a> Layer<'a> for Convolution {
@@ -723,8 +747,9 @@ impl<'a> Layer<'a> for Convolution {
             channel_count, filter_channel_count,
             "The number of channel in input and the number of channel in filter must match"
         );
-        let out_h = 1 + (input_height + 2 * self.pad - filter_height) / self.stride;
-        let out_w = 1 + (input_width + 2 * self.pad - filter_width) / self.stride;
+        let (out_h, out_w) = self.output_size(input_height, input_width);
+        //let out_h = 1 + (input_height + 2 * self.pad - filter_height) / self.stride;
+        //let out_w = 1 + (input_width + 2 * self.pad - filter_width) / self.stride;
         // col:(rest of the right) x (filter_height * filter_width * channel_count)
         let col = im2col(
             &x,

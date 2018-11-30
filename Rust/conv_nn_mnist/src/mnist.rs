@@ -8,6 +8,7 @@ use std::time::Instant;
 use ndarray::prelude::*;
 
 pub type Grayscale = f32;
+pub type Label = usize;
 
 pub const IMG_H_SIZE: usize = 28;
 pub const IMG_W_SIZE: usize = 28;
@@ -16,7 +17,7 @@ pub const IMG_W_SIZE: usize = 28;
 pub const MNIST_DOT_MAX: f32 = 255.;
 
 pub struct MnistRecord {
-    pub label: usize,
+    pub label: Label,
     pub dots: [Grayscale; IMG_H_SIZE * IMG_W_SIZE],
     pub dots_array: Array2<f32>,
 }
@@ -48,7 +49,7 @@ impl MnistRecord {
             let mnist: MnistRecord = MnistRecord {
                 label,
                 dots: array,
-                dots_array: dots_array2,
+                dots_array: normalize_dots_array(&dots_array2),
             };
             mnist_records.push(mnist);
         }
@@ -92,6 +93,19 @@ impl MnistRecord {
         // print!("Label {}:\n{}", self.label, s);
         print!("Image:\n{}", ANSIStrings(&v));
     }
+}
+
+fn normalize_dots_array(dots_array: &Array2<f32>) -> Array2<f32> {
+    let val_sum = dots_array.scalar_sum();
+    let val_avg = val_sum / (dots_array.len() as f32);
+    dots_array.mapv(|v| v - val_avg)
+}
+
+#[test]
+fn test_normalize_dots_array() {
+    let input = arr2(&[[1., 2.], [3., 4.]]);
+    let normalized_input = normalize_dots_array(&input);
+    assert_eq!(-1.5, normalized_input[[0, 0]]);
 }
 
 #[test]
