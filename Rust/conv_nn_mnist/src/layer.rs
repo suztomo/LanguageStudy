@@ -83,8 +83,10 @@ fn conv4d_to_2d(x: ArrayView4<Elem>) -> Array2<Elem> {
 }
 
 impl<'a> Affine {
-    pub fn new_with(initial_weights: Array2<Elem>) -> Affine {
+    pub fn new_with(initial_weights: Array2<Elem>, initial_bias: Array1<Elem>) -> Affine {
         let hidden_size = initial_weights.shape()[1];
+        assert_eq!(hidden_size, initial_bias.shape()[0],
+        "The 2nd part of weights and bias size should match");
         Affine {
             original_shape: [0, 0, 0, 0],
             // In Numpy, the weights shape is (pool_output_size, pool_output_size) and
@@ -98,14 +100,14 @@ impl<'a> Affine {
             d_weights: Array2::zeros((1, 1)),
             last_input_matrix: Array2::zeros((1, 1)),
             // The filter_num matches the number of channels in output feature map
-            bias: Array1::zeros(hidden_size),
+            bias: initial_bias, // Array1::zeros(hidden_size),
             d_bias: Array1::zeros(hidden_size),
         }
     }
 
     pub fn new(input_size: usize, hidden_size: usize) -> Affine {
         let initial_weights = Array::random((input_size, hidden_size), normal_distribution(0., 1.));
-        Self::new_with(initial_weights)
+        Self::new_with(initial_weights, Array1::zeros(hidden_size))
     }
 
     pub fn forward(&mut self, x: &'a Matrix) -> Array2<Elem> {

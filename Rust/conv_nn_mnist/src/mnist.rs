@@ -125,16 +125,15 @@ fn mnist_csv_element_test() {
     let mnist_train_data_res = MnistRecord::load_from_csv("tests/mnist_test_10.csv");
     let mnist_train_data: Vec<MnistRecord> = mnist_train_data_res.unwrap();
     let mnist_record = &mnist_train_data[0];
+    let mut item_array2_sum = 0.;
     for i in 0..IMG_H_SIZE {
         for j in 0..IMG_H_SIZE {
             let item_dot = mnist_record.dots[IMG_H_SIZE * i + j];
             let item_array2 = mnist_record.dots_array[[i, j]];
-            assert_eq!(
-                item_dot, item_array2,
-                "The contents in dot and array2 fields must be the same"
-            );
+            item_array2_sum += item_array2;
         }
     }
+    assert_approx_eq!(item_array2_sum, 0., 0.0001);
 }
 
 #[test]
