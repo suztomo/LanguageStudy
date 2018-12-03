@@ -254,14 +254,9 @@ fn test_gradient_check_simple_convnet() {
     let analytical_gradient = simple_convnet.backward_path();
     let numerical_gradient = numerical_gradient_array(&input4d, |x: ArrayView4<Elem>| -> Elem {
         let l = simple_convnet.forward_path(x.to_owned(), answers.to_owned());
-        println!("loss :{}", l);
         l
     });
 
-    println!("a {:?}", analytical_gradient);
-
-    println!("n {:?}", numerical_gradient);
-   
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
     println!("relative error: {}", rel_error);
 }
@@ -434,7 +429,6 @@ fn test_compare_numerical_gradient_generic() {
         numerical_gradient_weights_mut(weights_ref, || -> Elem {
         // 2nd mutable borrow of simple_convnet
         let loss = 0. ;// simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
-        println!("loss :{}", loss);
         loss
     });
     }

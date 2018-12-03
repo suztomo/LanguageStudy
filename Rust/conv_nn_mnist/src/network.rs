@@ -151,10 +151,10 @@ impl<'a> Network<'a> for SimpleConv {
             let original_element: Elem = weights[dim.clone()];
 
             weights[dim.clone()] = original_element + h;
-            let fx_plus_h = self.forward_path(input.to_owned(), answers.to_owned());
+            let fx_plus_h = 0.;// self.forward_path(input.to_owned(), answers.to_owned());
             
             weights[dim.clone()] = original_element - h;
-            let fx_minus_h = self.forward_path(input.to_owned(), answers.to_owned());
+            let fx_minus_h = 0.; // self.forward_path(input.to_owned(), answers.to_owned());
 
             weights[dim.clone()] = original_element;
 
