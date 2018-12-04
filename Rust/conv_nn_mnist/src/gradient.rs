@@ -8,12 +8,11 @@ use ndarray_rand::RandomExt;
 use std::fmt::Debug;
 
 use layer::{
-    argmax2d, reshape, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss,
-    normal_distribution, mnist_to_nchw
+    argmax2d, mnist_to_nchw, normal_distribution, reshape, Affine, Convolution, Elem, Layer,
+    Matrix, Pooling, Relu, SoftmaxWithLoss,
 };
 
 use network::{Network, SimpleConv};
-
 
 // https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/gradient.py
 
@@ -54,7 +53,10 @@ where
     ret
 }
 
-fn numerical_gradient_weights_mut<D, F>(weights: &mut Array<Elem, D>, mut loss_f: F) -> Array<Elem, D>
+fn numerical_gradient_weights_mut<D, F>(
+    weights: &mut Array<Elem, D>,
+    mut loss_f: F,
+) -> Array<Elem, D>
 where
     F: FnMut() -> f64,
     D: Dimension,
@@ -81,7 +83,6 @@ where
     }
     ret
 }
-
 
 fn norm<D>(x: &Array<Elem, D>) -> f64
 where
@@ -235,16 +236,80 @@ fn test_numerical_gradient_array4() {
 }
 
 fn random_shape<E>(shape: E) -> Array<Elem, E::Dim>
-where    E: IntoDimension + Debug,
+where
+    E: IntoDimension + Debug,
 {
     Array::random(shape, normal_distribution(0., 1.))
 }
 
 #[test]
-fn test_gradient_check_simple_convnet() {
-    let batch_size =1;
+fn test_gradient_check_simple_convnet_affine1_weight() {
+    let batch_size = 1;
     // This may need to adjust affine layer input size
-    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10));
+    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10), 3);
+
+    // 10x3x4x3
+    let input4d = random_shape((batch_size, 1, 10, 10));
+    let answers = vec![1];
+
+    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+    let _ = simple_convnet.backward_path();
+    let analytical_gradient = simple_convnet.affine_layer.d_weights.clone();
+
+    let numerical_gradient = numerical_gradient_weights(
+        &mut simple_convnet.affine_layer.weights.clone(),
+        |weights_h: &Array2<Elem>| -> Elem {
+            {
+                let mut weights = &mut simple_convnet.affine_layer.weights;
+                weights.assign(weights_h);
+            }
+            let l = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+            println!("{:?}-> {}", weights_h.shape(), l);
+            l
+        },
+    );
+
+    // Numerical_gradient is always zero. What's wrong?
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+}
+
+
+fn numerical_gradient_weights<D, F>(weights: &mut Array<Elem, D>, mut loss_f: F) -> Array<Elem, D>
+where
+    F: FnMut(&Array<Elem, D>) -> f64,
+    D: Dimension,
+{
+    let h = 0.0001;
+    let mut ret = Array::<Elem, D>::zeros(weights.raw_dim());
+    let weights_iter = weights.to_owned();
+    for (p, _i) in weights_iter.indexed_iter() {
+        let dim = p.into_dimension();
+        let original_element: Elem = weights[dim.clone()];
+
+        weights[dim.clone()] = original_element + h;
+        let fx_plus_h = loss_f(weights);
+
+        weights[dim.clone()] = original_element - h;
+        let fx_minus_h = loss_f(weights);
+
+        weights[dim.clone()] = original_element;
+
+        let d = fx_plus_h - fx_minus_h;
+        let dx = d / (2. * h);
+        // Dx is always zero; why?
+        println!("\n\n\n\nDim at {:?} = {}", dim, dx);
+        ret[dim] = dx;
+    }
+    ret
+}
+
+#[test]
+fn test_gradient_check_simple_convnet() {
+    let batch_size = 1;
+    // This may need to adjust affine layer input size
+    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10), 30);
 
     // 10x3x4x3
     let input4d = random_shape((batch_size, 1, 10, 10));
@@ -275,7 +340,6 @@ fn test_compare_numerical_gradient_convolution_input() {
     let mut affine_layer = Affine::new_with(affine_weight, Array1::zeros(10));
     let mut softmax_with_loss_layer = SoftmaxWithLoss::new();
 
-    
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
     assert_eq!(answer_array1.shape()[0], batch_size);
 
@@ -313,7 +377,7 @@ fn test_compare_numerical_gradient_affine4d_input() {
 
     // 10x3x4x3
     let input1d = input1d_360();
-    
+
     let input4d = reshape(input1d.view(), (10, 3, 4, 3));
 
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
@@ -339,7 +403,6 @@ fn test_compare_numerical_gradient_affine4d_input() {
     assert_approx_eq!(rel_error, 0., 0.0001);
 }
 
-
 #[test]
 fn test_compare_numerical_gradient_affine4d_weights() {
     // (3*4*3)x3
@@ -350,7 +413,7 @@ fn test_compare_numerical_gradient_affine4d_weights() {
 
     // 10x3x4x3
     let input1d = input1d_360();
-    
+
     let input4d = reshape(input1d.view(), (10, 3, 4, 3));
 
     let answer_array1 = Array1::from_vec(vec![0, 1, 2, 2, 1, 2, 0, 2, 1, 1]);
@@ -361,19 +424,20 @@ fn test_compare_numerical_gradient_affine4d_weights() {
     let _ = affine_layer.backward(&dout);
     let analytical_gradient = affine_layer.d_weights;
 
-    let numerical_gradient = numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
-        let mut affine_layer = Affine::new_with(weights.to_owned(), Array1::zeros(weights.shape()[1]));
-        let x2 = affine_layer.forward(&input4d);
-        let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
-        loss
-    });
+    let numerical_gradient =
+        numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
+            let mut affine_layer =
+                Affine::new_with(weights.to_owned(), Array1::zeros(weights.shape()[1]));
+            let x2 = affine_layer.forward(&input4d);
+            let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
+            loss
+        });
     assert_eq!(affine_weight.shape(), numerical_gradient.shape());
 
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
     // 0.00816917
     assert_approx_eq!(rel_error, 0., 0.01);
 }
-
 
 #[test]
 fn test_compare_numerical_gradient_affine4d_bias() {
@@ -396,12 +460,13 @@ fn test_compare_numerical_gradient_affine4d_bias() {
     let _ = affine_layer.backward(&dout);
     let analytical_gradient = affine_layer.d_bias;
 
-    let numerical_gradient = numerical_gradient_array(&affine_bias, |bias_h: ArrayView1<Elem>| -> Elem {
-        let mut affine_layer = Affine::new_with(affine_weights.to_owned(), bias_h.to_owned());
-        let x2 = affine_layer.forward(&input4d);
-        let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
-        loss
-    });
+    let numerical_gradient =
+        numerical_gradient_array(&affine_bias, |bias_h: ArrayView1<Elem>| -> Elem {
+            let mut affine_layer = Affine::new_with(affine_weights.to_owned(), bias_h.to_owned());
+            let x2 = affine_layer.forward(&input4d);
+            let loss = softmax_with_loss_layer.forward(&x2, &answer_array1);
+            loss
+        });
     assert_eq!(affine_bias.shape(), numerical_gradient.shape());
 
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
@@ -411,9 +476,9 @@ fn test_compare_numerical_gradient_affine4d_bias() {
 
 #[test]
 fn test_compare_numerical_gradient_generic() {
-    let batch_size =1;
+    let batch_size = 1;
     // This may need to adjust affine layer input size
-    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10));
+    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10), 3);
 
     // 10x3x4x3
     let input4d = random_shape((batch_size, 1, 10, 10));
@@ -423,17 +488,16 @@ fn test_compare_numerical_gradient_generic() {
     let (mut name_weights_array2, name_weights_array1) = simple_convnet.weights_ref();
     let mut name_weights_array2: Vec<(String, &mut Array2<Elem>)> = name_weights_array2;
     for (name, weights_ref) in name_weights_array2.iter_mut() {
-        let name:&String = name;
+        let name: &String = name;
         let weights_ref: &mut Array2<Elem> = *weights_ref;
         println!("weights name: {}", name);
         numerical_gradient_weights_mut(weights_ref, || -> Elem {
-        // 2nd mutable borrow of simple_convnet
-        let loss = 0. ;// simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
-        loss
-    });
+            // 2nd mutable borrow of simple_convnet
+            let loss = 0.; // simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+            loss
+        });
     }
 }
-
 
 #[test]
 fn test_compare_numerical_gradient_relu() {
@@ -464,7 +528,6 @@ fn test_compare_numerical_gradient_relu() {
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
     assert_approx_eq!(rel_error, 0.);
 }
-
 
 #[test]
 fn test_compare_numerical_gradient_affine_input() {
@@ -524,12 +587,14 @@ fn test_compare_numerical_gradient_affine_weights() {
     let _ = affine_layer.backward_2d(&dout);
     let analytical_gradient = affine_layer.d_weights;
 
-    let numerical_gradient = numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
-        let mut affine_layer = Affine::new_with(weights.to_owned(), Array1::zeros(weights.shape()[1]));
-        let x2 = affine_layer.forward_2d(&input);
-        let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
-        loss
-    });
+    let numerical_gradient =
+        numerical_gradient_array(&affine_weight, |weights: ArrayView2<Elem>| -> Elem {
+            let mut affine_layer =
+                Affine::new_with(weights.to_owned(), Array1::zeros(weights.shape()[1]));
+            let x2 = affine_layer.forward_2d(&input);
+            let loss = softmax_with_loss_layer.forward_view(x2.view(), &answer_array1);
+            loss
+        });
     assert_eq!(affine_weight.shape(), numerical_gradient.shape());
 
     let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
@@ -553,9 +618,8 @@ fn test_norm() {
     assert_approx_eq!(norm(&input), 1.93461244497_f64);
 }
 
-
-fn input1d_360()-> Array1<f64> {
-        Array::from_vec(vec![
+fn input1d_360() -> Array1<f64> {
+    Array::from_vec(vec![
         -0.009348636775035203,
         0.261872431435286,
         -0.0414835901957502,
@@ -920,7 +984,7 @@ fn input1d_360()-> Array1<f64> {
 }
 
 fn weight1d_108() -> Array1<f64> {
-        arr1(&[
+    arr1(&[
         -0.13899047254379013,
         -0.04484669902999548,
         1.1791242378353926,

@@ -28,9 +28,12 @@ use ndarray::prelude::*;
 extern crate utils;
 
 mod layer;
-use layer::{argmax2d, Affine, Convolution, Elem, Layer, Matrix, Pooling, Relu, SoftmaxWithLoss, Loss, mnist_to_nchw};
+use layer::{
+    argmax2d, mnist_to_nchw, Affine, Convolution, Elem, Layer, Loss, Matrix, Pooling, Relu,
+    SoftmaxWithLoss,
+};
 mod mnist;
-use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE, Label};
+use mnist::{Grayscale, Label, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 mod network;
 use network::{Network, SimpleConv};
 
@@ -102,14 +105,14 @@ fn generate_conv_input_array4(
     (ret, answer_labels)
 }
 
-fn main () {
+fn main() {
     let mnist_records_train: Vec<MnistRecord> =
         MnistRecord::load_from_csv("mnist_train.csv").unwrap();
     let mnist_records_test: Vec<MnistRecord> =
         MnistRecord::load_from_csv("mnist_test.csv").unwrap();
 
     let batch_size = 100;
-    let mut simple_convnet = SimpleConv::new(batch_size, (IMG_H_SIZE, IMG_W_SIZE));
+    let mut simple_convnet = SimpleConv::new(batch_size, (IMG_H_SIZE, IMG_W_SIZE), 30);
 
     let before_training = Instant::now();
     let epoch = 10000;
@@ -124,7 +127,10 @@ fn main () {
                 i, loss
             );
         }
-        assert!(! loss.is_nan(), "loss bacame NaN. Please check learning_rate");
+        assert!(
+            !loss.is_nan(),
+            "loss bacame NaN. Please check learning_rate"
+        );
     }
     println!(
         "Finished training set in {} secs. Running in test set.",
@@ -149,7 +155,6 @@ fn main () {
         test_count
     );
 }
-
 
 #[test]
 fn array_label_test() {

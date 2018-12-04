@@ -1,6 +1,7 @@
-use ndarray_rand::{RandomExt};
+use ndarray_rand::RandomExt;
 use rand::distributions::Normal;
 // use rand::Rng;
+use mnist::{Grayscale, Label, MnistRecord, IMG_H_SIZE, IMG_W_SIZE};
 use ndarray::prelude::*;
 use ndarray::IntoDimension;
 use ndarray::Ix;
@@ -10,7 +11,6 @@ use std::cmp::min;
 use std::f32;
 use std::f64;
 use std::fmt::Debug;
-use mnist::{Grayscale, MnistRecord, IMG_H_SIZE, IMG_W_SIZE, Label};
 
 lazy_static! {
     static ref INPUT_ARRAY4_ZERO: Matrix = Array::zeros((1, 1, 1, 1));
@@ -85,8 +85,11 @@ fn conv4d_to_2d(x: ArrayView4<Elem>) -> Array2<Elem> {
 impl<'a> Affine {
     pub fn new_with(initial_weights: Array2<Elem>, initial_bias: Array1<Elem>) -> Affine {
         let hidden_size = initial_weights.shape()[1];
-        assert_eq!(hidden_size, initial_bias.shape()[0],
-        "The 2nd part of weights and bias size should match");
+        assert_eq!(
+            hidden_size,
+            initial_bias.shape()[0],
+            "The 2nd part of weights and bias size should match"
+        );
         Affine {
             original_shape: [0, 0, 0, 0],
             // In Numpy, the weights shape is (pool_output_size, pool_output_size) and
@@ -239,8 +242,10 @@ impl<'a> Pooling {
     }
 
     pub fn output_size(&self, input_height: usize, input_width: usize) -> (usize, usize) {
-        (1 + (input_height - self.pool_h) / self.stride,
-        1 + (input_width - self.pool_w) / self.stride)
+        (
+            1 + (input_height - self.pool_h) / self.stride,
+            1 + (input_width - self.pool_w) / self.stride,
+        )
     }
 }
 
@@ -734,8 +739,10 @@ impl<'a> Convolution {
 
     pub fn output_size(&self, input_height: usize, input_width: usize) -> (usize, usize) {
         let (_, _, filter_height, filter_width) = self.weights.dim();
-        (1 + (input_height + 2 * self.pad - filter_height) / self.stride,
-        1 + (input_width + 2 * self.pad - filter_width) / self.stride)
+        (
+            1 + (input_height + 2 * self.pad - filter_height) / self.stride,
+            1 + (input_width + 2 * self.pad - filter_width) / self.stride,
+        )
     }
 }
 
