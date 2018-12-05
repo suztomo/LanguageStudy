@@ -115,12 +115,11 @@ fn main() {
     let mut simple_convnet = SimpleConv::new(batch_size, (IMG_H_SIZE, IMG_W_SIZE), 30);
 
     let before_training = Instant::now();
-    let epoch = 10000;
-    let learning_rate = 0.01;
+    let epoch = 1000;
 
     for i in 0..epoch {
         let (nchw, answers) = generate_conv_input_array4(&mnist_records_train, batch_size);
-        let loss = simple_convnet.train(nchw, answers, learning_rate);
+        let loss = simple_convnet.train(nchw, answers);
         if i % 10 == 0 {
             println!(
                 "Finished epoch {}. softmax_output (smaller, the better): {}",
@@ -149,6 +148,10 @@ fn main() {
     // As of Nov 29th, 5000 epochs and 0.01 learning rate ->  0.8286
     //  10000 epochs and 0.1 learning rate -> 0.541
     //  10000 epochs and 0.01 learning rate -> 0.822
+    //  5000 epochs and 0.01 learning rate and 0.01 stddev in weights -> 0.8928
+    // As of Dec. 5th after implementing Adam and fixed permutated_axis issue
+    //  1000 epochs -> 0.9547
+    //  5000 epochs -> 0.978
     println!(
         "Test result: {} of {} test cases",
         (test_correct_prediction as Elem) / (test_count as Elem),

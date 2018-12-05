@@ -1,5 +1,6 @@
 use ndarray::prelude::*;
 
+use ndarray::Array;
 use ndarray::Dimension;
 use ndarray::IntoDimension;
 use ndarray::Zip;
@@ -88,6 +89,7 @@ fn norm<D>(x: &Array<Elem, D>) -> f64
 where
     D: Dimension,
 {
+    // L-2 norm
     let mut sum: f64 = 0.;
     Zip::from(x).and(x).apply(|e1, e2| {
         sum += (e1 * e2) as f64;
@@ -103,6 +105,7 @@ where
     let norm_x1 = norm(x1);
     let norm_x2 = norm(x2);
     // http://cs231n.github.io/neural-networks-3/
+    // It's possible to exceed 1.0
     norm_diff / (norm_x1.max(norm_x2))
 }
 
@@ -242,38 +245,6 @@ where
     Array::random(shape, normal_distribution(0., 1.))
 }
 
-#[test]
-fn test_gradient_check_simple_convnet_affine1_weight() {
-    let batch_size = 1;
-    // This may need to adjust affine layer input size
-    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10), 3);
-
-    // 10x3x4x3
-    let input4d = random_shape((batch_size, 1, 10, 10));
-    let answers = vec![1];
-
-    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
-    let _ = simple_convnet.backward_path();
-    let analytical_gradient = simple_convnet.affine_layer.d_weights.clone();
-
-    let numerical_gradient = numerical_gradient_weights(
-        &mut simple_convnet.affine_layer.weights.clone(),
-        |weights_h: &Array2<Elem>| -> Elem {
-            {
-                let mut weights = &mut simple_convnet.affine_layer.weights;
-                weights.assign(weights_h);
-            }
-            let l = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
-            println!("{:?}-> {}", weights_h.shape(), l);
-            l
-        },
-    );
-
-    // Numerical_gradient is always zero. What's wrong?
-
-    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
-    println!("relative error: {}", rel_error);
-}
 
 
 fn numerical_gradient_weights<D, F>(weights: &mut Array<Elem, D>, mut loss_f: F) -> Array<Elem, D>
@@ -298,11 +269,130 @@ where
 
         let d = fx_plus_h - fx_minus_h;
         let dx = d / (2. * h);
-        // Dx is always zero; why?
-        println!("\n\n\n\nDim at {:?} = {}", dim, dx);
         ret[dim] = dx;
     }
     ret
+}
+
+#[test]
+fn test_gradient_check_simple_convnet_convolution_weight() {
+    let batch_size = 1;
+    // This may need to adjust affine layer input size
+    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10), 3);
+
+    let input4d = random_shape((batch_size, 1, 10, 10));
+    let answers = vec![1];
+
+    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+    let _ = simple_convnet.backward_path();
+    let analytical_gradient = simple_convnet.convolution_layer.d_weights.clone();
+
+    let numerical_gradient = numerical_gradient_weights(
+        &mut simple_convnet.convolution_layer.weights.clone(),
+        |weights_h: &Array4<Elem>| -> Elem {
+            simple_convnet.convolution_layer.weights.assign(weights_h);
+            simple_convnet.forward_path(input4d.to_owned(), answers.to_owned())
+        },
+    );
+
+    // Numerical_gradient is always zero. What's wrong?
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+    // 1.437219753801509 as of Dec 4th. Problematic.
+    assert_approx_eq!(rel_error, 0., 0.01);
+}
+
+
+#[test]
+fn test_gradient_check_simple_convnet_convolution_bias() {
+    let batch_size = 1;
+    // This may need to adjust affine layer input size
+    let mut simple_convnet = SimpleConv::new(batch_size, (10, 10), 3);
+
+    let input4d = random_shape((batch_size, 1, 10, 10));
+    let answers = vec![1];
+
+    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+    let _ = simple_convnet.backward_path();
+    let analytical_gradient = simple_convnet.convolution_layer.d_bias.clone();
+
+    let numerical_gradient = numerical_gradient_weights(
+        &mut simple_convnet.convolution_layer.bias.clone(), // zero?
+        |bias_h: &Array1<Elem>| -> Elem {
+            simple_convnet.convolution_layer.bias.assign(bias_h);
+            simple_convnet.forward_path(input4d.to_owned(), answers.to_owned())
+        },
+    );
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+    // 0.000001898292309172879 as of Dec 4th. Plausible.
+    // But sometimes it's 0.01154523268509736. Problematic.
+    assert_approx_eq!(rel_error, 0., 0.00001);
+}
+
+
+
+#[test]
+fn test_gradient_check_simple_convnet_affine1_weight() {
+    let img_size = 10;
+    let batch_size = 1;
+    let conv_filter_num = 3;
+    let mut simple_convnet = SimpleConv::new(batch_size, (img_size, img_size), conv_filter_num);
+
+    // 10x3x4x3
+    let input4d = random_shape((batch_size, 1, img_size, img_size));
+    let answers = vec![1];
+
+    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+    let _ = simple_convnet.backward_path();
+    let analytical_gradient = simple_convnet.affine_layer.d_weights.clone();
+
+    let numerical_gradient = numerical_gradient_weights(
+        &mut simple_convnet.affine_layer.weights.clone(),
+        |weights_h: &Array2<Elem>| -> Elem {
+            simple_convnet.affine_layer.weights.assign(weights_h);
+            simple_convnet.forward_path(input4d.to_owned(), answers.to_owned())
+        },
+    );
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+    // 0.0000039657067421530615 as of Dec. 4th
+    // 0.0006819791001561064 as of Dec. 5th
+    assert_approx_eq!(rel_error, 0., 0.01);
+}
+
+#[test]
+fn test_gradient_check_simple_convnet_affine2_weight() {
+    let img_size = 10;
+    let batch_size = 1;
+    let conv_filter_num = 3;
+    // This may need to adjust affine layer input size
+    let mut simple_convnet = SimpleConv::new(batch_size, (img_size, img_size), conv_filter_num);
+
+    // 10x3x4x3
+    let input4d = random_shape((batch_size, 1, img_size, img_size));
+    let answers = vec![1];
+
+    let _ = simple_convnet.forward_path(input4d.to_owned(), answers.to_owned());
+    let _ = simple_convnet.backward_path();
+    let analytical_gradient = simple_convnet.affine2_layer.d_weights.clone();
+
+    let numerical_gradient = numerical_gradient_weights(
+        &mut simple_convnet.affine2_layer.weights.clone(),
+        |weights_h: &Array2<Elem>| -> Elem {
+            simple_convnet.affine2_layer.weights.assign(weights_h);
+            simple_convnet.forward_path(input4d.to_owned(), answers.to_owned())
+        },
+    );
+
+    // Numerical_gradient is always zero. What's wrong?
+
+    let rel_error = relative_error(&numerical_gradient, &analytical_gradient);
+    println!("relative error: {}", rel_error);
+    // 0.0000003708214099852187 - 0.00037109576719622094 as of December 4th
+    assert_approx_eq!(rel_error, 0., 0.001);
 }
 
 #[test]
